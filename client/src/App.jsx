@@ -4,7 +4,6 @@ import Login from './Login';
 import AppLayout from './AppLayout';
 import GatePass from './GatePass';
 
-// Placeholder Components for Tabs we haven't built yet
 const MessReview = () => <div className="p-4 text-center text-gray-500 mt-10">Mess Review UI Coming Soon</div>;
 const Complaint = () => <div className="p-4 text-center text-gray-500 mt-10">Complaint UI Coming Soon</div>;
 
