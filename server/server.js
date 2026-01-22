@@ -9,8 +9,8 @@ app.use(express.json());
 // Database Connection
 const db = mysql.createConnection({
     host: 'localhost',
-    user: 'root',      // Update with your MySQL username
-    password: 'OPEN SQL', // Update with your MySQL password
+    user: 'root',     
+    password: 'OPEN SQL', 
     database: 'hostel_os'
 });
 
@@ -51,11 +51,24 @@ app.get('/api/gate/status/:id', (req, res) => {
 
 // 2. Log Entry/Exit (The Check-In/Out Loop)
 app.post('/api/gate/log', (req, res) => {
-    const { student_id, action, reason, destination } = req.body; // action = 'out' or 'in'
-    
+    const { student_id, action, reason, destination, qr_code } = req.body; 
+    console.log(qr_code);
+    // --- NEW: SECURITY CHECK ---
+    // Only check QR if they are trying to enter ('in')
+    if (action === 'in') {
+        const VALID_SECRET = "HOSTEL_SECURE"; // Must match Kiosk exactly
+        
+        if (qr_code !== VALID_SECRET) {
+            console.log("❌ Security Alert: Invalid QR Code Scanned:", qr_code);
+            return res.status(403).json({ 
+                success: false, 
+                message: "Security Alert: Invalid QR Code" 
+            });
+        }
+    }
     // Logic: If checking 'in', they are present (1). If 'out', they are absent (0).
     const isPresent = action === 'in' ? 1 : 0;
-
+    const dbStatus = action === 'in' ? 'returned' : 'out';
     // Transaction: Update Table A (Logs) AND Table B (Users) together
     db.beginTransaction(err => {
         if (err) return res.status(500).json(err);
@@ -65,25 +78,30 @@ app.post('/api/gate/log', (req, res) => {
         // For simple Day 2 demo, we just log a new row for every action to keep it easy.
         const logSql = 'INSERT INTO gate_logs (student_id, status, reason, destination) VALUES (?, ?, ?, ?)';
         
-        db.query(logSql, [student_id, action, reason, destination || 'Returning'], (err, result) => {
-            if (err) {
-                return db.rollback(() => res.status(500).json(err));
-            }
+        db.query(logSql, [student_id, dbStatus, reason, destination || 'Returning'], (err, result) => {
+        if (err) {
+            // --- ADD THIS LOG ---
+            console.error("❌ SQL ERROR (Insert Log):", err.sqlMessage); 
+            // --------------------
+            return db.rollback(() => res.status(500).json({ error: err.sqlMessage }));
+        }
 
-            // B. Update User Status
-            const userSql = 'UPDATE users SET is_present = ? WHERE id = ?';
-            db.query(userSql, [isPresent, student_id], (err, result) => {
-                if (err) {
-                    return db.rollback(() => res.status(500).json(err));
-                }
-                
-                // Commit the Transaction
-                db.commit(err => {
-                    if (err) return db.rollback(() => res.status(500).json(err));
-                    res.json({ success: true, new_status: action });
-                });
+        const userSql = 'UPDATE users SET is_present = ? WHERE id = ?';
+        db.query(userSql, [isPresent, student_id], (err, result) => {
+            if (err) {
+                // --- ADD THIS LOG ---
+                console.error("❌ SQL ERROR (Update User):", err.sqlMessage);
+                // --------------------
+                return db.rollback(() => res.status(500).json({ error: err.sqlMessage }));
+            }
+            
+            db.commit(err => {
+                if (err) return db.rollback(() => res.status(500).json(err));
+                console.log("✅ Transaction Committed Successfully!"); // Confirm success
+                res.json({ success: true, new_status: action });
             });
         });
+    });
     });
 });
 app.listen(3001, () => {
