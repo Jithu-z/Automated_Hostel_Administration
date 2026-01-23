@@ -104,6 +104,38 @@ app.post('/api/gate/log', (req, res) => {
     });
     });
 });
+
+// --- NEW: Warden Dashboard API ---
+
+app.get('/api/warden/dashboard', (req, res) => {
+    // 1. Get Count of Students currently OUT
+    const countSql = 'SELECT COUNT(*) as out_count FROM users WHERE is_present = 0';
+    
+    // 2. Get Recent Logs (Joined with User Names)
+    const logsSql = `
+        SELECT gate_logs.*, users.full_name, users.roll_no 
+        FROM gate_logs 
+        JOIN users ON gate_logs.student_id = users.id 
+        ORDER BY exit_time DESC 
+        LIMIT 10
+    `;
+
+    db.query(countSql, (err, countResult) => {
+        if (err) return res.status(500).json(err);
+        
+        db.query(logsSql, (err, logsResult) => {
+            if (err) return res.status(500).json(err);
+            
+            res.json({
+                stats: {
+                    out_now: countResult[0].out_count,
+                    total_students: 50 // Hardcoded for demo, or query count(*) from users
+                },
+                recent_logs: logsResult
+            });
+        });
+    });
+});
 app.listen(3001, () => {
     console.log('🚀 Server running on port 3001');
 });
