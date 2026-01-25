@@ -3,8 +3,8 @@ import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 
 function Login({ setUser }) {
-  const [rollNo, setRollNo] = useState('');
-  const [pass, setPass] = useState('');
+  const [uid, setuid] = useState('');
+  const [password, setPassword] = useState('');
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -16,13 +16,14 @@ function Login({ setUser }) {
 
     try {
       const res = await axios.post('http://localhost:3001/api/auth/login', {
-        rollNo,
-        pass
+        uid,
+        password
       });
 
       if (res.data.success) {
         localStorage.setItem('user', JSON.stringify(res.data.user));
-        navigate('/gatepass');
+        setUser(res.data.user);
+        navigate('/app/gatepass');
       }
     } catch (err) {
       console.error("Login Error:", err);
@@ -61,8 +62,8 @@ function Login({ setUser }) {
           <input 
             className="w-full p-3 rounded-lg bg-gray-100 border-none text-gray-800 focus:ring-2 focus:ring-blue-500 outline-none" 
             placeholder="Enter your UID" 
-            value={rollNo}
-            onChange={(e) => setRollNo(e.target.value)} 
+            value={uid}
+            onChange={(e) => setuid(e.target.value)} 
           />
         </div>
 
@@ -72,8 +73,8 @@ function Login({ setUser }) {
             className="w-full p-3 rounded-lg bg-gray-100 border-none text-gray-800 focus:ring-2 focus:ring-blue-500 outline-none" 
             type="password" 
             placeholder="Enter your password" 
-            value={pass}
-            onChange={(e) => setPass(e.target.value)} 
+            value={password}
+            onChange={(e) => setPassword(e.target.value)} 
           />
         </div>
 

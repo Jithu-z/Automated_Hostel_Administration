@@ -113,7 +113,7 @@ function WardenDashboard() {
                 <tr key={log.id} className="hover:bg-gray-50 transition">
                   <td className="px-6 py-4">
                     <p className="font-bold text-gray-800">{log.name}</p>
-                    <p className="text-xs text-gray-500">{log.roll_no}</p>
+                    <p className="text-xs text-gray-500">{log.uid}</p>
                   </td>
                   <td className="px-6 py-4">
                     <span className={`px-3 py-1 rounded-full text-xs font-bold ${
@@ -127,10 +127,10 @@ function WardenDashboard() {
                   <td className="px-6 py-4 text-sm text-gray-600">
                     <div className="flex items-center gap-2">
                       <Clock size={14} />
-                      {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      {new Date(log.exit_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </div>
                     <div className="text-xs text-gray-400 mt-1">
-                      {new Date(log.timestamp).toLocaleDateString()}
+                      {new Date(log.exit_time).toLocaleDateString()}
                     </div>
                   </td>
                   <td className="px-6 py-4">

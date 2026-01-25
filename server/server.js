@@ -21,10 +21,10 @@ db.connect(err => {
 
 
 
-app.post('/api/login', (req, res) => {
-    const { roll_no, password } = req.body;
-    const sql = 'SELECT * FROM users WHERE roll_no = ? AND password_hash = ?';
-    db.query(sql, [roll_no, password], (err, result) => {
+app.post('/api/auth/login', (req, res) => {
+    const { uid, password } = req.body;
+    const sql = 'SELECT * FROM users WHERE uid = ? AND password_hash = ?';
+    db.query(sql, [uid, password], (err, result) => {
         if (err) return res.status(500).json(err);
         if (result.length > 0) {
             res.json({ success: true, user: result[0] });
@@ -111,7 +111,7 @@ app.get('/api/warden/dashboard', (req, res) => {
     
     // 2. Get Recent Logs (Joined with User Names)
     const logsSql = `
-        SELECT gate_logs.*, users.full_name, users.roll_no 
+        SELECT gate_logs.*, users.full_name, users.uid 
         FROM gate_logs 
         JOIN users ON gate_logs.student_id = users.id 
         ORDER BY exit_time DESC 

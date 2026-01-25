@@ -92,6 +92,10 @@ function GatePass() {
   };
 
   const confirmCheckOut = async () => {
+    if (!destination.trim() || !reason.trim()) {
+      alert("⚠️ Please fill in both Destination and Reason.");
+      return; // Stop here! Do not send to server.
+    }
     setLoading(true);
     try {
       const res = await axios.post('http://localhost:3001/api/gate/log', {
@@ -185,6 +189,7 @@ function GatePass() {
                 <textarea 
                   className="w-full bg-gray-50 rounded-xl mt-1 p-3 border border-gray-100 outline-none text-sm h-20 resize-none" 
                   value={reason}
+                  placeholder='enter reason'
                   onChange={(e) => setReason(e.target.value)}
                 />
               </div>

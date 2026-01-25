@@ -23,7 +23,7 @@ function AppLayout({ user }) {
             </div>
             <div>
               <h2 className="font-bold text-lg leading-tight">{user?.full_name || "User"}</h2>
-              <p className="text-xs text-blue-200">{user?.roll_no || "u???"}</p>
+              <p className="text-xs text-blue-200">{user?.uid || "u???"}</p>
             </div>
           </div>
           <button className="text-xs flex items-center gap-1 bg-blue-700 px-3 py-1 rounded-full opacity-90 hover:opacity-100">

@@ -8,7 +8,10 @@ const MessReview = () => <div className="p-4 text-center text-gray-500 mt-10">Me
 const Complaint = () => <div className="p-4 text-center text-gray-500 mt-10">Complaint UI Coming Soon</div>;
 
 function App() {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(() => {
+    const savedUser = localStorage.getItem('user');
+    return savedUser ? JSON.parse(savedUser) : null;
+  });
 
   return (
     <BrowserRouter>
