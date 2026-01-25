@@ -6,20 +6,38 @@ function Login({ setUser }) {
   const [rollNo, setRollNo] = useState('');
   const [pass, setPass] = useState('');
   const navigate = useNavigate();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  const handleLogin = async () => {
+ const handleLogin = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(''); // Clear previous errors
+
     try {
-      // Connect to Member 1's backend
-      const res = await axios.post('http://localhost:3001/api/login', { 
-        roll_no: rollNo, 
-        password: pass 
+      const res = await axios.post('http://localhost:3001/api/auth/login', {
+        rollNo,
+        pass
       });
+
       if (res.data.success) {
-        setUser(res.data.user);
-        navigate('/app/gatepass'); // Default to Gatepass for Day 1 Demo
+        localStorage.setItem('user', JSON.stringify(res.data.user));
+        navigate('/gatepass');
       }
     } catch (err) {
-      alert("Invalid Login! (Try: CS101 / 1234)");
+      console.error("Login Error:", err);
+      
+      // --- NEW: Smart Error Handling ---
+      if (err.code === "ERR_NETWORK") {
+        setError("⚠️ Server is OFFLINE. Please start the Backend.");
+      } else if (err.response && err.response.status === 401) {
+        setError("❌ Invalid Credentials. Try again.");
+      } else {
+        setError("⚠️ Login failed. Please try again.");
+      }
+      // --------------------------------
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -28,12 +46,16 @@ function Login({ setUser }) {
       {/* Header Text */}
       <div className="text-center mb-8">
         <h1 className="text-3xl font-bold text-gray-900">Student Portal</h1>
-        <p className="text-gray-500">Hostel Management System</p>
+        <p className="text-gray-500">Hostel Administration System</p>
       </div>
 
       {/* Login Card */}
+      {error && (
+        <div className="mb-4 p-3 bg-red-100 border border-red-200 text-red-600 rounded-lg text-sm font-bold flex items-center gap-2 animate-pulse">
+        <span>{error}</span>
+        </div>
+      )}
       <div className="bg-white p-8 rounded-2xl shadow-lg w-full max-w-sm">
-        
         <div className="mb-4">
           <label className="block text-sm font-semibold text-gray-700 mb-2">College UID</label>
           <input 

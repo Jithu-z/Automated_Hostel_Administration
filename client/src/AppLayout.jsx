@@ -19,11 +19,11 @@ function AppLayout({ user }) {
         <div className="flex justify-between items-start">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-blue-400 rounded-full flex items-center justify-center text-sm font-bold">
-              {user?.full_name ? user.full_name.substring(0,2).toUpperCase() : 'JD'}
+              {user?.full_name ? user.full_name.substring(0,2).toUpperCase() : '?'}
             </div>
             <div>
-              <h2 className="font-bold text-lg leading-tight">{user?.full_name || "John Doe"}</h2>
-              <p className="text-xs text-blue-200">{user?.roll_no || "u230348"}</p>
+              <h2 className="font-bold text-lg leading-tight">{user?.full_name || "User"}</h2>
+              <p className="text-xs text-blue-200">{user?.roll_no || "u???"}</p>
             </div>
           </div>
           <button className="text-xs flex items-center gap-1 bg-blue-700 px-3 py-1 rounded-full opacity-90 hover:opacity-100">

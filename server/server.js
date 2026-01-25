@@ -21,7 +21,6 @@ db.connect(err => {
 
 
 
-// Login API (Simple Check for Day 1)
 app.post('/api/login', (req, res) => {
     const { roll_no, password } = req.body;
     const sql = 'SELECT * FROM users WHERE roll_no = ? AND password_hash = ?';
@@ -34,7 +33,6 @@ app.post('/api/login', (req, res) => {
         }
     });
 });
-// --- NEW: Gate Pass Logic Day 2---
 
 // 1. Get Current Status (To show Green or Orange on load)
 app.get('/api/gate/status/:id', (req, res) => {
@@ -132,6 +130,32 @@ app.get('/api/warden/dashboard', (req, res) => {
                     total_students: 50 // Hardcoded for demo, or query count(*) from users
                 },
                 recent_logs: logsResult
+            });
+        });
+    });
+});
+
+//Reset System 
+app.post('/api/warden/reset', (req, res) => {
+    const resetLogs = 'DELETE FROM gate_logs'; 
+    const resetUsers = 'UPDATE users SET is_present = 1';
+
+    db.beginTransaction(err => {
+        if (err) return res.status(500).json(err);
+
+        // 1. Delete all history
+        db.query(resetLogs, (err) => {
+            if (err) return db.rollback(() => res.status(500).json(err));
+
+            // 2. Mark everyone as "In Hostel"
+            db.query(resetUsers, (err) => {
+                if (err) return db.rollback(() => res.status(500).json(err));
+
+                db.commit(err => {
+                    if (err) return db.rollback(() => res.status(500).json(err));
+                    console.log("⚠️ SYSTEM RESET COMPLETE");
+                    res.json({ success: true, message: "System Wiped Clean" });
+                });
             });
         });
     });

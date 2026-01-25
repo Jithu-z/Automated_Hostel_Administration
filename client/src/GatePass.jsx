@@ -1,15 +1,15 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Html5QrcodeScanner } from 'html5-qrcode'; // <--- NEW IMPORT
+import { Html5QrcodeScanner } from 'html5-qrcode'; 
 import { DoorOpen, MapPin, AlertCircle } from 'lucide-react';
 
 function GatePass() {
-  const studentId = 2; // Hardcoded for demo
+  const studentId = 2; // Hardcoded 
   const [status, setStatus] = useState('in'); 
   
   // Modals
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
-  const [showScanner, setShowScanner] = useState(false); // <--- NEW STATE
+  const [showScanner, setShowScanner] = useState(false); 
 
   // Form Data
   const [destination, setDestination] = useState('');
@@ -27,7 +27,6 @@ function GatePass() {
       .catch(err => console.error(err));
   };
 
-  // 2. Initialize Scanner when 'showScanner' becomes true
   useEffect(() => {
     if (showScanner) {
       const scanner = new Html5QrcodeScanner(
@@ -58,36 +57,31 @@ function GatePass() {
   };
 
   const onScanFailure = (error) => {
-    // console.warn(error); // Ignore frame failures, they are noisy
+    // console.warn(error); // Ignore frame failures
   };
 
   // 4. API Calls
   const performCheckIn = async (qrData) => {
     setLoading(true);
     try {
-      // We send the 'qr_data' to the server to verify it
       const res = await axios.post('http://localhost:3001/api/gate/log', {
         student_id: studentId,
         action: 'in',
         reason: 'Returned via Scan',
         destination: 'Hostel',
-        qr_code: qrData // <--- NEW: Send the scanned string
+        qr_code: qrData 
       });
 
       if (res.data.success) {
         setStatus('in');
-        alert("✅ Verified! Welcome back.");
+        alert("Verified! Welcome back.");
       }
     } catch (err) {
-      // If server returns 403 (Invalid Code)
-      //alert("❌ Invalid QR Code! Please scan the official Hostel Kiosk.");
       if (err.response && err.response.status === 403) {
-         // This is the ONLY time it is actually an Invalid QR
-         alert("❌ Security Alert: Invalid QR Code!");
+         alert("Security Alert: Invalid QR Code!");
       } else if (err.response) {
-         // If it's a 500 error (Database), show the real message
          console.error("Server Error:", err.response.data);
-         alert(`⚠️ System Error: ${JSON.stringify(err.response.data)}`);
+         alert(`System Error: ${JSON.stringify(err.response.data)}`);
       } else {
          console.error(err);
          alert("Network Error");

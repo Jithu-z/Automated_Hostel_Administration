@@ -6,7 +6,19 @@ function WardenDashboard() {
   const [stats, setStats] = useState({ out_now: 0, total_students: 0 });
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const handleReset = async () => {
+    if (!window.confirm("⚠️ ARE YOU SURE? This will delete ALL logs and mark everyone as Present.")) {
+      return;
+    }
 
+    try {
+      await axios.post('http://localhost:3001/api/warden/reset');
+      alert("System Reset Successfully!");
+      fetchData(); // Refresh the table immediately
+    } catch (err) {
+      alert("Failed to reset system");
+    }
+  };
   const fetchData = async () => {
     setLoading(true);
     try {
@@ -31,15 +43,28 @@ function WardenDashboard() {
     <div className="p-6 bg-gray-50 min-h-screen animate-fade-in">
       
       {/* Header */}
-      <div className="flex justify-between items-center mb-8">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-800">Warden Dashboard</h1>
-          <p className="text-gray-500">Live monitoring of hostel movements</p>
-        </div>
-        <button onClick={fetchData} className="p-2 bg-white rounded-full shadow-sm hover:shadow-md transition">
-          <RefreshCw size={20} className={`text-blue-600 ${loading ? 'animate-spin' : ''}`} />
-        </button>
-      </div>
+      {/* Replace your Header section with this: */}
+  <div className="flex justify-between items-center mb-8">
+    <div>
+     <h1 className="text-3xl font-bold text-gray-800">Warden Dashboard</h1>
+      <p className="text-gray-500">Live monitoring of hostel movements</p>
+    </div>
+  
+  <div className="flex gap-3">
+    {/* NEW: Reset Button */}
+      <button 
+        onClick={handleReset}
+        className="px-4 py-2 bg-red-100 text-red-600 font-bold rounded-xl hover:bg-red-200 transition text-sm"
+      >
+        Reset System
+      </button>
+
+    {/* Existing Refresh Button */}
+      <button onClick={fetchData} className="p-2 bg-white rounded-full shadow-sm hover:shadow-md transition">
+        <RefreshCw size={20} className={`text-blue-600 ${loading ? 'animate-spin' : ''}`} />
+      </button>
+    </div>
+  </div>
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
