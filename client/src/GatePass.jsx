@@ -22,7 +22,7 @@ function GatePass() {
   }, []);
 
   const fetchStatus = () => {
-    axios.get(`http://localhost:3001/api/gate/status/${studentId}`)
+    axios.get(`http://10.52.201.123:3001/api/gate/status/${studentId}`)
       .then(res => setStatus(res.data.status))
       .catch(err => console.error(err));
   };
@@ -64,7 +64,7 @@ function GatePass() {
   const performCheckIn = async (qrData) => {
     setLoading(true);
     try {
-      const res = await axios.post('http://localhost:3001/api/gate/log', {
+      const res = await axios.post('http://10.52.201.123:3001/api/gate/log', {
         student_id: studentId,
         action: 'in',
         reason: 'Returned via Scan',
@@ -98,7 +98,7 @@ function GatePass() {
     }
     setLoading(true);
     try {
-      const res = await axios.post('http://localhost:3001/api/gate/log', {
+      const res = await axios.post('http://10.52.201.123:3001/api/gate/log', {
         student_id: studentId,
         action: 'out',
         destination: destination,

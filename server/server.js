@@ -47,16 +47,28 @@ app.get('/api/gate/status/:id', (req, res) => {
     });
 });
 
+//Rotating qr codes
+let currentKioskCode = "INITIAL-CODE"; 
+
+// --- 2. Route for Kiosk to get a NEW code (Runs every 10s) ---
+app.get('/api/kiosk/update-code', (req, res) => {
+    // Generate a secure random code ON THE SERVER
+    const newSeed = Math.random().toString(36).substring(7);
+    const timestamp = new Date().getTime();
+    
+    // Update the global variable
+    currentKioskCode = `SECURE-${newSeed}-${timestamp}`;
+    
+    // Send it to the Kiosk
+    res.json({ success: true, code: currentKioskCode });
+});
+
 // 2. Log Entry/Exit (The Check-In/Out Loop)
 app.post('/api/gate/log', (req, res) => {
     const { student_id, action, reason, destination, qr_code } = req.body; 
     console.log(qr_code);
-    // --- NEW: SECURITY CHECK ---
-    // Only check QR if they are trying to enter ('in')
     if (action === 'in') {
-        const VALID_SECRET = "HOSTEL_SECURE"; // Must match Kiosk exactly
-        
-        if (qr_code !== VALID_SECRET) {
+        if (qr_code !== currentKioskCode) {
             console.log("❌ Security Alert: Invalid QR Code Scanned:", qr_code);
             return res.status(403).json({ 
                 success: false, 
@@ -137,7 +149,7 @@ app.get('/api/warden/dashboard', (req, res) => {
 
 //Reset System 
 app.post('/api/warden/reset', (req, res) => {
-    const resetLogs = 'DELETE FROM gate_logs'; 
+    const resetLogs = 'TRUNCATE table gate_logs'; 
     const resetUsers = 'UPDATE users SET is_present = 1';
 
     db.beginTransaction(err => {
