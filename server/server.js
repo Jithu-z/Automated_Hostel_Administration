@@ -6,7 +6,6 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Database Connection
 const db = mysql.createConnection({
     host: 'localhost',
     user: 'root',     
@@ -15,8 +14,8 @@ const db = mysql.createConnection({
 });
 
 db.connect(err => {
-    if (err) console.log('❌ DB Connection Failed:', err);
-    else console.log('✅ Connected to MySQL');
+    if (err) console.log('DB Connection Failed:', err);
+    else console.log('Connected to MySQL');
 });
 
 
@@ -34,15 +33,12 @@ app.post('/api/auth/login', (req, res) => {
     });
 });
 
-// 1. Get Current Status (To show Green or Orange on load)
 app.get('/api/gate/status/:id', (req, res) => {
     const userId = req.params.id;
     const sql = 'SELECT is_present FROM users WHERE id = ?';
     db.query(sql, [userId], (err, result) => {
         if (err) return res.status(500).json(err);
         if (result.length === 0) return res.status(404).json({ message: 'User not found' });
-        
-        // Return "in" if present is true, "out" if false
         res.json({ status: result[0].is_present ? 'in' : 'out' });
     });
 });
@@ -50,36 +46,29 @@ app.get('/api/gate/status/:id', (req, res) => {
 //Rotating qr codes
 let currentKioskCode = "INITIAL-CODE"; 
 
-// --- 2. Route for Kiosk to get a NEW code (Runs every 10s) ---
+//Route for Kiosk to get a NEW code (Runs every 10s) 
 app.get('/api/kiosk/update-code', (req, res) => {
-    // Generate a secure random code ON THE SERVER
     const newSeed = Math.random().toString(36).substring(7);
     const timestamp = new Date().getTime();
-    
-    // Update the global variable
     currentKioskCode = `SECURE-${newSeed}-${timestamp}`;
-    
-    // Send it to the Kiosk
     res.json({ success: true, code: currentKioskCode });
 });
 
-// 2. Log Entry/Exit (The Check-In/Out Loop)
+//Log Entry/Exit (The Check-In/Out Loop)
 app.post('/api/gate/log', (req, res) => {
     const { student_id, action, reason, destination, qr_code } = req.body; 
     console.log(qr_code);
     if (action === 'in') {
         if (qr_code !== currentKioskCode) {
-            console.log("❌ Security Alert: Invalid QR Code Scanned:", qr_code);
+            console.log("Security Alert: Invalid QR Code Scanned:", qr_code);
             return res.status(403).json({ 
                 success: false, 
                 message: "Security Alert: Invalid QR Code" 
             });
         }
     }
-    // Logic: If checking 'in', they are present (1). If 'out', they are absent (0).
     const isPresent = action === 'in' ? 1 : 0;
     const dbStatus = action === 'in' ? 'returned' : 'out';
-    // Transaction: Update Table A (Logs) AND Table B (Users) together
     db.beginTransaction(err => {
         if (err) return res.status(500).json(err);
 
@@ -90,24 +79,20 @@ app.post('/api/gate/log', (req, res) => {
         
         db.query(logSql, [student_id, dbStatus, reason, destination || 'Returning'], (err, result) => {
         if (err) {
-            // --- ADD THIS LOG ---
-            console.error("❌ SQL ERROR (Insert Log):", err.sqlMessage); 
-            // --------------------
+            console.error("SQL ERROR (Insert Log):", err.sqlMessage); 
             return db.rollback(() => res.status(500).json({ error: err.sqlMessage }));
         }
 
         const userSql = 'UPDATE users SET is_present = ? WHERE id = ?';
         db.query(userSql, [isPresent, student_id], (err, result) => {
             if (err) {
-                // --- ADD THIS LOG ---
-                console.error("❌ SQL ERROR (Update User):", err.sqlMessage);
-                // --------------------
+                console.error("SQL ERROR (Update User):", err.sqlMessage);
                 return db.rollback(() => res.status(500).json({ error: err.sqlMessage }));
             }
             
             db.commit(err => {
                 if (err) return db.rollback(() => res.status(500).json(err));
-                console.log("✅ Transaction Committed Successfully!"); // Confirm success
+                console.log("Transaction Committed Successfully!"); // Confirm success
                 res.json({ success: true, new_status: action });
             });
         });
@@ -115,12 +100,12 @@ app.post('/api/gate/log', (req, res) => {
     });
 });
 
-// --- NEW: Warden Dashboard API ---
+
+//Warden Dashboard API
 
 app.get('/api/warden/dashboard', (req, res) => {
     // 1. Get Count of Students currently OUT
     const countSql = 'SELECT COUNT(*) as out_count FROM users WHERE is_present = 0';
-    
     // 2. Get Recent Logs (Joined with User Names)
     const logsSql = `
         SELECT gate_logs.*, users.full_name, users.uid 
@@ -139,7 +124,7 @@ app.get('/api/warden/dashboard', (req, res) => {
             res.json({
                 stats: {
                     out_now: countResult[0].out_count,
-                    total_students: 50 // Hardcoded for demo, or query count(*) from users
+                    total_students: 50 // Hardcoded for now,query count(*) from users
                 },
                 recent_logs: logsResult
             });
@@ -165,7 +150,7 @@ app.post('/api/warden/reset', (req, res) => {
 
                 db.commit(err => {
                     if (err) return db.rollback(() => res.status(500).json(err));
-                    console.log("⚠️ SYSTEM RESET COMPLETE");
+                    console.log("SYSTEM RESET COMPLETE");
                     res.json({ success: true, message: "System Wiped Clean" });
                 });
             });
@@ -173,5 +158,5 @@ app.post('/api/warden/reset', (req, res) => {
     });
 });
 app.listen(3001, () => {
-    console.log('🚀 Server running on port 3001');
+    console.log('Server running on port 3001');
 });

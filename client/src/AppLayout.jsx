@@ -10,7 +10,10 @@ function AppLayout({ user }) {
     { name: 'Digital Gatepass', path: '/app/gatepass', icon: <DoorOpen size={20} /> }, // Matches "Check-in, Check-out"
     { name: 'Complaint', path: '/app/complaint', icon: <MessageSquare size={20} /> },
   ];
-
+  const handleLogout = () => {
+  localStorage.removeItem('user'); 
+  window.location.href = "/"; 
+  };
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
       
@@ -26,7 +29,7 @@ function AppLayout({ user }) {
               <p className="text-xs text-blue-200">{user?.uid || "u???"}</p>
             </div>
           </div>
-          <button className="text-xs flex items-center gap-1 bg-blue-700 px-3 py-1 rounded-full opacity-90 hover:opacity-100">
+          <button className="text-xs flex items-center gap-1 bg-blue-700 px-3 py-1 rounded-full opacity-90 hover:opacity-100" onclick={handleLogout}>
             <LogOut size={12} /> Logout
           </button>
         </div>

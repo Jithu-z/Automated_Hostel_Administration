@@ -6,8 +6,9 @@ function WardenDashboard() {
   const [stats, setStats] = useState({ out_now: 0, total_students: 0 });
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
+
   const handleReset = async () => {
-    if (!window.confirm("⚠️ ARE YOU SURE? This will delete ALL logs and mark everyone as Present.")) {
+    if (!window.confirm(" ARE YOU SURE? This will delete ALL logs and mark everyone as Present.")) {
       return;
     }
 
@@ -19,6 +20,7 @@ function WardenDashboard() {
       alert("Failed to reset system");
     }
   };
+
   const fetchData = async () => {
     setLoading(true);
     try {
@@ -34,7 +36,6 @@ function WardenDashboard() {
 
   useEffect(() => {
     fetchData();
-    // Optional: Auto-refresh every 5 seconds to make it look "Live"
     const interval = setInterval(fetchData, 5000); 
     return () => clearInterval(interval);
   }, []);
@@ -51,7 +52,6 @@ function WardenDashboard() {
     </div>
   
   <div className="flex gap-3">
-    {/* NEW: Reset Button */}
       <button 
         onClick={handleReset}
         className="px-4 py-2 bg-red-100 text-red-600 font-bold rounded-xl hover:bg-red-200 transition text-sm"
@@ -59,7 +59,6 @@ function WardenDashboard() {
         Reset System
       </button>
 
-    {/* Existing Refresh Button */}
       <button onClick={fetchData} className="p-2 bg-white rounded-full shadow-sm hover:shadow-md transition">
         <RefreshCw size={20} className={`text-blue-600 ${loading ? 'animate-spin' : ''}`} />
       </button>

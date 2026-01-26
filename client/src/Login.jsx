@@ -28,15 +28,14 @@ function Login({ setUser }) {
     } catch (err) {
       console.error("Login Error:", err);
       
-      // --- NEW: Smart Error Handling ---
+      //Smart Error Handling 
       if (err.code === "ERR_NETWORK") {
-        setError("⚠️ Server is OFFLINE. Please start the Backend.");
+        setError("Server is OFFLINE. Please start the Backend.");
       } else if (err.response && err.response.status === 401) {
-        setError("❌ Invalid Credentials. Try again.");
+        setError("Invalid Credentials. Try again.");
       } else {
-        setError("⚠️ Login failed. Please try again.");
+        setError("Login failed. Please try again.");
       }
-      // --------------------------------
     } finally {
       setLoading(false);
     }

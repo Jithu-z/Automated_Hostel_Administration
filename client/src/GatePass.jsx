@@ -46,13 +46,8 @@ function GatePass() {
 
   // 3. Handle Successful Scan
   const onScanSuccess = async (decodedText) => {
-    // In real app, we verify the specific code. For now, accept anything.
     console.log(`Scan result: ${decodedText}`);
-    
-    // Stop the scanner immediately
     setShowScanner(false);
-    
-    // Call the API
     performCheckIn(decodedText);
   };
 
@@ -93,8 +88,8 @@ function GatePass() {
 
   const confirmCheckOut = async () => {
     if (!destination.trim() || !reason.trim()) {
-      alert("⚠️ Please fill in both Destination and Reason.");
-      return; // Stop here! Do not send to server.
+      alert("Please fill in both Destination and Reason.");
+      return; 
     }
     setLoading(true);
     try {
