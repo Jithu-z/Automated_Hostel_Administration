@@ -29,7 +29,7 @@ function AppLayout({ user }) {
               <p className="text-xs text-blue-200">{user?.uid || "u???"}</p>
             </div>
           </div>
-          <button className="text-xs flex items-center gap-1 bg-blue-700 px-3 py-1 rounded-full opacity-90 hover:opacity-100" onclick={handleLogout}>
+          <button className="text-xs flex items-center gap-1 bg-blue-700 px-3 py-1 rounded-full opacity-90 hover:opacity-100" onClick={handleLogout}>
             <LogOut size={12} /> Logout
           </button>
         </div>

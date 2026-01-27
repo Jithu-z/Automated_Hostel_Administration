@@ -35,7 +35,7 @@ app.post('/api/auth/login', (req, res) => {
 
 app.get('/api/gate/status/:id', (req, res) => {
     const userId = req.params.id;
-    const sql = 'SELECT is_present FROM users WHERE id = ?';
+    const sql = 'SELECT is_present FROM users WHERE uid = ?';
     db.query(sql, [userId], (err, result) => {
         if (err) return res.status(500).json(err);
         if (result.length === 0) return res.status(404).json({ message: 'User not found' });
@@ -75,7 +75,7 @@ app.post('/api/gate/log', (req, res) => {
         // A. Insert into Logs
         // Note: We use 'exit_time' for OUT. For IN, we will update the 'actual_return' later. 
         // For simple Day 2 demo, we just log a new row for every action to keep it easy.
-        const logSql = 'INSERT INTO gate_logs (student_id, status, reason, destination) VALUES (?, ?, ?, ?)';
+        const logSql = 'INSERT INTO gate_logs (uid, status, reason, destination) VALUES (?, ?, ?, ?)';
         
         db.query(logSql, [student_id, dbStatus, reason, destination || 'Returning'], (err, result) => {
         if (err) {
@@ -83,7 +83,7 @@ app.post('/api/gate/log', (req, res) => {
             return db.rollback(() => res.status(500).json({ error: err.sqlMessage }));
         }
 
-        const userSql = 'UPDATE users SET is_present = ? WHERE id = ?';
+        const userSql = 'UPDATE users SET is_present = ? WHERE uid = ?';
         db.query(userSql, [isPresent, student_id], (err, result) => {
             if (err) {
                 console.error("SQL ERROR (Update User):", err.sqlMessage);
@@ -110,7 +110,7 @@ app.get('/api/warden/dashboard', (req, res) => {
     const logsSql = `
         SELECT gate_logs.*, users.full_name, users.uid 
         FROM gate_logs 
-        JOIN users ON gate_logs.student_id = users.id 
+        JOIN users ON gate_logs.uid = users.uid 
         ORDER BY exit_time DESC 
         LIMIT 10
     `;
@@ -155,6 +155,19 @@ app.post('/api/warden/reset', (req, res) => {
                 });
             });
         });
+    });
+});
+
+// Get list of all students currently OUT
+app.get('/api/warden/out-list', (req, res) =>{
+    const sql = "SELECT uid, full_name FROM users WHERE is_present = 0 ORDER BY full_name ASC";
+    
+    db.query(sql, (err, results) => {
+        if (err) {
+            console.error("Error fetching out list:", err);
+            return res.status(500).json({ error: "Database error" });
+        }
+        res.json(results);
     });
 });
 app.listen(3001, () => {

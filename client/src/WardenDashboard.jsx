@@ -6,6 +6,8 @@ function WardenDashboard() {
   const [stats, setStats] = useState({ out_now: 0, total_students: 0 });
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [outStudents, setOutStudents] = useState([]); // Stores the list of absent students
+  const [showOutModal, setShowOutModal] = useState(false);
 
   const handleReset = async () => {
     if (!window.confirm(" ARE YOU SURE? This will delete ALL logs and mark everyone as Present.")) {
@@ -15,7 +17,7 @@ function WardenDashboard() {
     try {
       await axios.post('http://localhost:3001/api/warden/reset');
       alert("System Reset Successfully!");
-      fetchData(); // Refresh the table immediately
+      fetchData(); 
     } catch (err) {
       alert("Failed to reset system");
     }
@@ -33,18 +35,25 @@ function WardenDashboard() {
       setLoading(false);
     }
   };
-
   useEffect(() => {
     fetchData();
     const interval = setInterval(fetchData, 5000); 
     return () => clearInterval(interval);
   }, []);
 
+
+  const handleOutClick = async () => {
+    try {
+        const res = await axios.get('http://localhost:3001/api/warden/out-list');
+        setOutStudents(res.data);
+        setShowOutModal(true); 
+    } catch (err) {
+        alert("Failed to fetch data");
+    }
+  };
+
   return (
     <div className="p-6 bg-gray-50 min-h-screen animate-fade-in">
-      
-      {/* Header */}
-      {/* Replace your Header section with this: */}
   <div className="flex justify-between items-center mb-8">
     <div>
      <h1 className="text-3xl font-bold text-gray-800">Warden Dashboard</h1>
@@ -69,7 +78,8 @@ function WardenDashboard() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         
         {/* Card 1: Students OUT */}
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4">
+    
+        <div onClick={handleOutClick} className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4">
           <div className="p-4 bg-orange-100 rounded-xl text-orange-600">
             <AlertTriangle size={32} />
           </div>
@@ -78,6 +88,7 @@ function WardenDashboard() {
             <h2 className="text-4xl font-bold text-gray-800">{stats.out_now}</h2>
           </div>
         </div>
+
 
         {/* Card 2: Total Strength */}
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4">
@@ -145,6 +156,55 @@ function WardenDashboard() {
           )}
         </div>
       </div>
+
+
+      {/* --- STUDENTS OUT MODAL --- */}
+{showOutModal && (
+  <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 backdrop-blur-sm">
+    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+      
+      {/* Header */}
+      <div className="bg-red-600 p-4 flex justify-between items-center text-white">
+        <h3 className="font-bold text-lg">⚠️ Absent Students List</h3>
+        <button 
+          onClick={() => setShowOutModal(false)}
+          className="hover:bg-red-700 p-1 rounded-full transition"
+        >
+          ✕
+        </button>
+      </div>
+
+      {/* List Content */}
+      <div className="p-4 max-h-[60vh] overflow-y-auto">
+        {outStudents.length === 0 ? (
+          <p className="text-center text-gray-500 py-4">No students are currently out.</p>
+        ) : (
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="border-b text-xs text-gray-400 uppercase">
+                <th className="py-2">Name</th>
+                <th className="py-2">UID</th>
+              </tr>
+            </thead>
+            <tbody>
+              {outStudents.map((student) => (
+                <tr key={student.uid} className="border-b last:border-0 hover:bg-gray-50">
+                  <td className="py-3 font-medium text-gray-800">{student.full_name}</td>
+                  <td className="py-3 text-sm text-gray-500">{student.uid}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* Footer */}
+      <div className="bg-gray-50 p-3 border-t text-center">
+        <p className="text-xs text-gray-400">Total Out: {outStudents.length}</p>
+      </div>
+    </div>
+  </div>
+    )}
     </div>
   );
 }

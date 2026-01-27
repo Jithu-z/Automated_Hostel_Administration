@@ -4,7 +4,8 @@ import { Html5QrcodeScanner } from 'html5-qrcode';
 import { DoorOpen, MapPin, AlertCircle } from 'lucide-react';
 
 function GatePass() {
-  const studentId = 2; // Hardcoded 
+  const storedUser = JSON.parse(localStorage.getItem('user'));
+  const studentId = storedUser ? storedUser.uid : null;
   const [status, setStatus] = useState('in'); 
   
   // Modals
@@ -22,7 +23,7 @@ function GatePass() {
   }, []);
 
   const fetchStatus = () => {
-    axios.get(`http://10.52.201.123:3001/api/gate/status/${studentId}`)
+    axios.get(`http://10.68.210.123:3001/api/gate/status/${studentId}`)
       .then(res => setStatus(res.data.status))
       .catch(err => console.error(err));
   };
@@ -59,7 +60,7 @@ function GatePass() {
   const performCheckIn = async (qrData) => {
     setLoading(true);
     try {
-      const res = await axios.post('http://10.52.201.123:3001/api/gate/log', {
+      const res = await axios.post('http://10.68.210.123:3001/api/gate/log', {
         student_id: studentId,
         action: 'in',
         reason: 'Returned via Scan',
@@ -93,7 +94,7 @@ function GatePass() {
     }
     setLoading(true);
     try {
-      const res = await axios.post('http://10.52.201.123:3001/api/gate/log', {
+      const res = await axios.post('http://10.68.210.123:3001/api/gate/log', {
         student_id: studentId,
         action: 'out',
         destination: destination,
