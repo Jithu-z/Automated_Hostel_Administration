@@ -7,6 +7,7 @@ function GatePass() {
   const storedUser = JSON.parse(localStorage.getItem('user'));
   const studentId = storedUser ? storedUser.uid : null;
   const [status, setStatus] = useState('in'); 
+  const [logs, setLogs] = useState([]); // <--- Add this
   
   // Modals
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
@@ -23,10 +24,16 @@ function GatePass() {
   }, []);
 
   const fetchStatus = () => {
-    axios.get(`http://10.68.210.123:3001/api/gate/status/${studentId}`)
+    axios.get(`http://172.23.181.123:3001/api/gate/status/${studentId}`)
       .then(res => setStatus(res.data.status))
       .catch(err => console.error(err));
   };
+
+  const fetchLogs = () => {
+  axios.get(`http://172.23.181.123:3001/api/student/logs/${studentId}`)
+    .then(res => setLogs(res.data))
+    .catch(err => console.error("Failed to fetch logs", err));
+};
 
   useEffect(() => {
     if (showScanner) {
@@ -45,6 +52,13 @@ function GatePass() {
     }
   }, [showScanner]);
 
+  useEffect(() => {
+  if (studentId) {
+    fetchStatus();
+    fetchLogs();
+  }
+}, [studentId]);
+
   // 3. Handle Successful Scan
   const onScanSuccess = async (decodedText) => {
     console.log(`Scan result: ${decodedText}`);
@@ -56,11 +70,11 @@ function GatePass() {
     // console.warn(error); // Ignore frame failures
   };
 
-  // 4. API Calls
+
   const performCheckIn = async (qrData) => {
     setLoading(true);
     try {
-      const res = await axios.post('http://10.68.210.123:3001/api/gate/log', {
+      const res = await axios.post('http://172.23.181.123:3001/api/gate/log', {
         student_id: studentId,
         action: 'in',
         reason: 'Returned via Scan',
@@ -70,6 +84,7 @@ function GatePass() {
 
       if (res.data.success) {
         setStatus('in');
+        fetchLogs();
         alert("Verified! Welcome back.");
       }
     } catch (err) {
@@ -94,7 +109,7 @@ function GatePass() {
     }
     setLoading(true);
     try {
-      const res = await axios.post('http://10.68.210.123:3001/api/gate/log', {
+      const res = await axios.post('http://172.23.181.123:3001/api/gate/log', {
         student_id: studentId,
         action: 'out',
         destination: destination,
@@ -102,6 +117,8 @@ function GatePass() {
       });
       if (res.data.success) {
         setStatus('out');
+        fetchLogs();
+        alert("Checked Out Successfully!");
         setShowCheckoutModal(false);
         setDestination('');
         setReason('');
@@ -153,14 +170,36 @@ function GatePass() {
       {/* Recent Activity */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
         <h3 className="text-sm font-bold text-gray-800 mb-4">Recent Activity</h3>
-        <div className="flex items-start gap-3 pb-4 border-b border-gray-50 opacity-60">
-            <div className="p-2 bg-orange-100 rounded-lg text-orange-600"><AlertCircle size={16}/></div>
-            <div>
-                <p className="text-sm font-bold text-gray-800">Checked Out</p>
-                <p className="text-xs text-gray-500">Log entry recorded</p>
+  
+        <div className="space-y-4">
+          {logs.length === 0 ? (
+          <p className="text-gray-400 text-xs text-center py-2">No activity recorded yet.</p>
+          ) : (
+          logs.map((log) => (
+          <div key={log.id} className="flex items-start gap-3 pb-3 border-b border-gray-50 last:border-0 last:pb-0">
+            <div className={`p-2 rounded-lg ${log.status === 'out' ? 'bg-orange-100 text-orange-600' : 'bg-green-100 text-green-600'}`}>
+              {log.status === 'out' ? <AlertCircle size={16}/> : <DoorOpen size={16}/>}
             </div>
+            <div>
+              <p className="text-sm font-bold text-gray-800 capitalize">
+                {log.status === 'out' ? 'Checked Out' : 'Returned'}
+              </p>
+              <p className="text-xs text-gray-500">
+                {/* Format Date: "10:30 PM - 12 Oct" */}
+                {new Date(log.exit_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} 
+                {' • '} 
+                {new Date(log.exit_time).toLocaleDateString()}
+              </p>
+              {/* Show Reason if Out */}
+              {log.status === 'out' && (
+                <p className="text-[10px] text-gray-400 mt-1">To: {log.destination}</p>
+              )}
+              </div>
+              </div>
+            ))
+          )}
         </div>
-      </div>
+    </div>
 
       {/* --- CHECKOUT MODAL --- */}
       {showCheckoutModal && (

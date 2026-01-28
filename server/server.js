@@ -57,7 +57,6 @@ app.get('/api/kiosk/update-code', (req, res) => {
 //Log Entry/Exit (The Check-In/Out Loop)
 app.post('/api/gate/log', (req, res) => {
     const { student_id, action, reason, destination, qr_code } = req.body; 
-    console.log(qr_code);
     if (action === 'in') {
         if (qr_code !== currentKioskCode) {
             console.log("Security Alert: Invalid QR Code Scanned:", qr_code);
@@ -100,6 +99,20 @@ app.post('/api/gate/log', (req, res) => {
     });
 });
 
+// Get recent logs for a SINGLE student
+app.get('/api/student/logs/:uid', (req, res) => {
+    const uid = req.params.uid;
+    const sql = 'SELECT * FROM gate_logs WHERE uid = ? ORDER BY exit_time DESC LIMIT 5';
+    
+    db.query(sql, [uid], (err, result) => {
+        if (err) {
+            console.error("Error fetching logs:", err);
+            return res.status(500).json(err);
+        }
+        res.json(result);
+    });
+});
+
 
 //Warden Dashboard API
 
@@ -139,15 +152,10 @@ app.post('/api/warden/reset', (req, res) => {
 
     db.beginTransaction(err => {
         if (err) return res.status(500).json(err);
-
-        // 1. Delete all history
         db.query(resetLogs, (err) => {
             if (err) return db.rollback(() => res.status(500).json(err));
-
-            // 2. Mark everyone as "In Hostel"
             db.query(resetUsers, (err) => {
                 if (err) return db.rollback(() => res.status(500).json(err));
-
                 db.commit(err => {
                     if (err) return db.rollback(() => res.status(500).json(err));
                     console.log("SYSTEM RESET COMPLETE");

@@ -15,7 +15,7 @@ function Login({ setUser }) {
     setError(''); // Clear previous errors
 
     try {
-      const res = await axios.post('http://10.68.210.123:3001/api/auth/login', {
+      const res = await axios.post('http://172.23.181.123:3001/api/auth/login', {
         uid,
         password
       });
@@ -78,10 +78,12 @@ function Login({ setUser }) {
         </div>
 
         <button 
-          className="w-full bg-blue-600 text-white p-3 rounded-xl font-bold hover:bg-blue-700 transition shadow-md shadow-blue-200"
-          onClick={handleLogin}
+        disabled={loading} 
+        className={`w-full p-3 rounded-xl font-bold transition shadow-md shadow-blue-200 text-white
+        ${loading ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`} 
+        onClick={handleLogin}
         >
-          Login
+            {loading ? 'Logging in...' : 'Login'} {/* <--- 3. Changes text */}
         </button>
 
         <p className="text-center text-xs text-gray-400 mt-6">

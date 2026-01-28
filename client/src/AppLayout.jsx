@@ -35,7 +35,7 @@ function AppLayout({ user }) {
         </div>
       </div>
 
-      {/* Main Content Area (Scrollable) */}
+      {/* Main Content Area*/}
       <div className="flex-1 overflow-y-auto pb-24 p-6 -mt-4">
         <Outlet /> 
       </div>
