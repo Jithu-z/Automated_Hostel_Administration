@@ -15,7 +15,7 @@ function Login({ setUser }) {
     setError(''); // Clear previous errors
 
     try {
-      const res = await axios.post('http://172.23.181.123:3001/api/auth/login', {
+      const res = await axios.post('http://10.218.123.123:3001/api/auth/login', {
         uid,
         password
       });
@@ -28,7 +28,7 @@ function Login({ setUser }) {
     } catch (err) {
       console.error("Login Error:", err);
       
-      //Smart Error Handling 
+      // Error Handling 
       if (err.code === "ERR_NETWORK") {
         setError("Server is OFFLINE. Please start the Backend.");
       } else if (err.response && err.response.status === 401) {

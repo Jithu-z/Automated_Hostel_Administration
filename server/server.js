@@ -113,6 +113,35 @@ app.get('/api/student/logs/:uid', (req, res) => {
     });
 });
 
+// student grievances api's
+// Submit Grievance
+app.post('/api/student/grievances', (req, res) => {
+    // Note: room_no comes from frontend or you can query it from users table. 
+    // For now, we expect the frontend to send it.
+    const { uid, room_no, category, description } = req.body;
+    
+    const sql = "INSERT INTO grievances (uid, room_no, category, description) VALUES (?, ?, ?, ?)";
+    db.query(sql, [uid, room_no, category, description], (err, result) => {
+        if (err) return res.status(500).json(err);
+        res.json({ success: true, message: "Grievance submitted" });
+    });
+});
+app.get('/api/student/grievances/:uid', (req, res) => {
+    const sql = "SELECT * FROM grievances WHERE uid = ? ORDER BY date_logged DESC";
+    db.query(sql, [req.params.uid], (err, result) => {
+        if (err) return res.status(500).json(err);
+        res.json(result);
+    });
+});
+app.put('/api/student/grievances/acknowledge/:id', (req, res) => {
+    const sql = "UPDATE grievances SET is_acknowledged = TRUE WHERE id = ?";
+    db.query(sql, [req.params.id], (err, result) => {
+        if (err) return res.status(500).json(err);
+        res.json({ success: true });
+    });
+});
+
+
 
 //Warden Dashboard API
 
@@ -168,7 +197,7 @@ app.post('/api/warden/reset', (req, res) => {
 
 // Get list of all students currently OUT
 app.get('/api/warden/out-list', (req, res) =>{
-    const sql = "SELECT uid, full_name FROM users WHERE is_present = 0 ORDER BY full_name ASC";
+    const sql = "SELECT uid, full_name, phone_no, address FROM users WHERE is_present = 0 ORDER BY full_name ASC";
     
     db.query(sql, (err, results) => {
         if (err) {
@@ -176,6 +205,62 @@ app.get('/api/warden/out-list', (req, res) =>{
             return res.status(500).json({ error: "Database error" });
         }
         res.json(results);
+    });
+});
+
+// ---Warden GRIEVANCE ROUTES ---
+
+//Fetch All (with Student Name)
+app.get('/api/warden/grievances', (req, res) => {
+    // JOIN with users table to get the full_name
+    const sql = `
+      SELECT g.*, u.full_name 
+      FROM grievances g 
+      JOIN users u ON g.uid = u.uid 
+      ORDER BY g.date_logged DESC
+    `;
+    db.query(sql, (err, result) => {
+        if (err) return res.status(500).json(err);
+        res.json(result);
+    });
+});
+
+// 1. Update Status (Modified to save date_resolved)
+app.put('/api/warden/grievances/:id', (req, res) => {
+    const { status } = req.body; 
+    const { id } = req.params;
+
+    let sql;
+    let params;
+
+    if (status === 'Resolved') {
+        sql = "UPDATE grievances SET status = ?, date_resolved = CURRENT_TIMESTAMP WHERE id = ?";
+        params = [status, id];
+    } else {
+        sql = "UPDATE grievances SET status = ? WHERE id = ?";
+        params = [status, id];
+    }
+
+    db.query(sql, params, (err, result) => {
+        if (err) return res.status(500).json(err);
+        res.json({ success: true });
+    });
+});
+
+// 2. Clear All Resolved History
+app.delete('/api/warden/grievances/clear-history', (req, res) => {
+    const sql = "DELETE FROM grievances WHERE status = 'Resolved'";
+    db.query(sql, (err, result) => {
+        if (err) return res.status(500).json(err);
+        res.json({ success: true, message: "History cleared" });
+    });
+});
+
+app.delete('/api/warden/grievances/:id', (req, res) => {
+    const sql = "DELETE FROM grievances WHERE id = ?";
+    db.query(sql, [req.params.id], (err, result) => {
+        if (err) return res.status(500).json(err);
+        res.json({ success: true, message: "Grievance deleted" });
     });
 });
 app.listen(3001, () => {
