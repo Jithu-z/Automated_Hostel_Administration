@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { 
   Home,Clock,RefreshCw,Trash2,Search, CheckCircle, ClipboardList, Utensils, Moon, AlertCircle, Users, Settings, LogOut, 
-  Filter, Image as ImageIcon 
+  Filter,ListFilter, Image as ImageIcon 
 } from 'lucide-react';
 
 // --- SUB-COMPONENTS  ---
@@ -194,6 +194,7 @@ const GrievancesTab = () => {
   const [loading, setLoading] = useState(false);
   const [viewMode, setViewMode] = useState('active'); // 'active' or 'history'
   const [filterCategory, setFilterCategory] = useState('All'); 
+  const [filterStatus, setFilterStatus] = useState('All');
   const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
@@ -258,6 +259,9 @@ const GrievancesTab = () => {
     const isResolved = g.status === 'Resolved';
     if (viewMode === 'active' && isResolved) return false;
     if (viewMode === 'history' && !isResolved) return false;
+    if (viewMode === 'active' && filterStatus !== 'All') {
+        if (g.status !== filterStatus) return false;
+    }
     if (filterCategory !== 'All' && g.category !== filterCategory) return false;
     if (searchTerm !== '') {
         const lowerTerm = searchTerm.toLowerCase();
@@ -298,7 +302,20 @@ const GrievancesTab = () => {
               className="pl-9 pr-4 py-2 w-full md:w-48 bg-white border border-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-100 transition-all"
             />
           </div>
-
+          {viewMode === 'active' && (
+            <div className="relative">
+              <ListFilter size={16} className="absolute left-3 top-2.5 text-gray-400" />
+              <select 
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                className="pl-9 pr-8 py-2 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-700 outline-none focus:ring-2 focus:ring-blue-100 cursor-pointer appearance-none"
+              >
+                <option value="All">All Status</option>
+                <option value="Pending">Pending</option>
+                <option value="Assigned">Assigned</option>
+              </select>
+            </div>
+          )}
           <div className="relative">
             <Filter size={16} className="absolute left-3 top-2.5 text-gray-400" />
             <select 
