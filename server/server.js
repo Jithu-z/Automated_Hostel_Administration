@@ -2,6 +2,32 @@ const express = require('express');
 const mysql = require('mysql2');
 const cors = require('cors');
 const app = express();
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+
+
+const uploadDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir);
+}
+
+// 2. Configure Multer Storage
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        cb(null, 'uploads/'); // Save files here
+    },
+    filename: (req, file, cb) => {
+        // Name file: uid-timestamp.jpg (to prevent duplicates)
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+    }
+});
+
+const upload = multer({ storage: storage });
+
+// 3. Serve the Uploads folder statically (Crucial for viewing images!)
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 app.use(cors());
 app.use(express.json());
@@ -46,7 +72,6 @@ app.get('/api/gate/status/:id', (req, res) => {
 //Rotating qr codes
 let currentKioskCode = "INITIAL-CODE"; 
 
-//Route for Kiosk to get a NEW code (Runs every 10s) 
 app.get('/api/kiosk/update-code', (req, res) => {
     const newSeed = Math.random().toString(36).substring(7);
     const timestamp = new Date().getTime();
@@ -54,7 +79,7 @@ app.get('/api/kiosk/update-code', (req, res) => {
     res.json({ success: true, code: currentKioskCode });
 });
 
-//Log Entry/Exit (The Check-In/Out Loop)
+//Log Entry/Exit
 app.post('/api/gate/log', (req, res) => {
     const { student_id, action, reason, destination, qr_code } = req.body; 
     if (action === 'in') {
@@ -113,15 +138,14 @@ app.get('/api/student/logs/:uid', (req, res) => {
     });
 });
 
+
 // student grievances api's
-// Submit Grievance
-app.post('/api/student/grievances', (req, res) => {
-    // Note: room_no comes from frontend or you can query it from users table. 
-    // For now, we expect the frontend to send it.
+app.post('/api/student/grievances',upload.single('evidence'), (req, res) => {
+    // Note: room_no comes from frontend (TO BE CHANGED LATER)
     const { uid, room_no, category, description } = req.body;
-    
-    const sql = "INSERT INTO grievances (uid, room_no, category, description) VALUES (?, ?, ?, ?)";
-    db.query(sql, [uid, room_no, category, description], (err, result) => {
+    const img_url = req.file ? `/uploads/${req.file.filename}` : null;
+    const sql = "INSERT INTO grievances (uid, room_no, category, description, img_url) VALUES (?, ?, ?, ?, ?)";
+    db.query(sql, [uid, room_no, category, description, img_url], (err, result) => {
         if (err) return res.status(500).json(err);
         res.json({ success: true, message: "Grievance submitted" });
     });
@@ -143,12 +167,12 @@ app.put('/api/student/grievances/acknowledge/:id', (req, res) => {
 
 
 
-//Warden Dashboard API
+//Warden Dashboard API's
 
+//Overnight stay Routes
 app.get('/api/warden/dashboard', (req, res) => {
-    // 1. Get Count of Students currently OUT
     const countSql = 'SELECT COUNT(*) as out_count FROM users WHERE is_present = 0';
-    // 2. Get Recent Logs (Joined with User Names)
+
     const logsSql = `
         SELECT gate_logs.*, users.full_name, users.uid 
         FROM gate_logs 
@@ -208,11 +232,10 @@ app.get('/api/warden/out-list', (req, res) =>{
     });
 });
 
-// ---Warden GRIEVANCE ROUTES ---
 
-//Fetch All (with Student Name)
+//GRIEVANCE ROUTES
+
 app.get('/api/warden/grievances', (req, res) => {
-    // JOIN with users table to get the full_name
     const sql = `
       SELECT g.*, u.full_name 
       FROM grievances g 
@@ -225,26 +248,44 @@ app.get('/api/warden/grievances', (req, res) => {
     });
 });
 
-// 1. Update Status (Modified to save date_resolved)
 app.put('/api/warden/grievances/:id', (req, res) => {
     const { status } = req.body; 
     const { id } = req.params;
-
-    let sql;
-    let params;
-
+    
+    // CASE 1: Mark as RESOLVED (Delete Media + Update DB)
     if (status === 'Resolved') {
-        sql = "UPDATE grievances SET status = ?, date_resolved = CURRENT_TIMESTAMP WHERE id = ?";
-        params = [status, id];
-    } else {
-        sql = "UPDATE grievances SET status = ? WHERE id = ?";
-        params = [status, id];
-    }
+        // Step A: Find the file path first
+        const selectSql = "SELECT img_url FROM grievances WHERE id = ?";
+        db.query(selectSql, [id], (err, results) => {
+            if (err) return res.status(500).json(err);
+            
+            // Step B: Delete the file if it exists
+            if (results.length > 0 && results[0].img_url) {
+                const fileName = path.basename(results[0].img_url); // Extract 'file.jpg' from '/uploads/file.jpg'
+                const filePath = path.join(__dirname, 'uploads', fileName);
 
-    db.query(sql, params, (err, result) => {
-        if (err) return res.status(500).json(err);
-        res.json({ success: true });
-    });
+                fs.unlink(filePath, (err) => {
+                    if (err) console.error("Warning: File not found or already deleted:", filePath);
+                    else console.log("🗑️  Evidence deleted to save space:", fileName);
+                });
+            }
+            // Step C: Update DB (Set status AND clear img_url)
+            const updateSql = "UPDATE grievances SET status = ?, date_resolved = CURRENT_TIMESTAMP, img_url = NULL WHERE id = ?";
+            db.query(updateSql, [status, id], (updateErr, result) => {
+                if (updateErr) return res.status(500).json(updateErr);
+                res.json({ success: true, message: "Resolved & Media Deleted" });
+            });
+        });
+
+    } 
+    // CASE 2: Other Status Updates (Pending/Assigned) - No Deletion
+    else {
+        const sql = "UPDATE grievances SET status = ? WHERE id = ?";
+        db.query(sql, [status, id], (err, result) => {
+            if (err) return res.status(500).json(err);
+            res.json({ success: true });
+        });
+    }
 });
 
 // 2. Clear All Resolved History
@@ -263,6 +304,8 @@ app.delete('/api/warden/grievances/:id', (req, res) => {
         res.json({ success: true, message: "Grievance deleted" });
     });
 });
+
+
 app.listen(3001, () => {
     console.log('Server running on port 3001');
 });

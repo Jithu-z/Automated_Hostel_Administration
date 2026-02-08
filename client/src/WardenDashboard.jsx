@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { 
   Home,Clock,RefreshCw,Trash2,Search, CheckCircle, ClipboardList, Utensils, Moon, AlertCircle, Users, Settings, LogOut, 
-  Filter,ListFilter, Image as ImageIcon 
+  Filter,ListFilter,X,FileVideo, Image as ImageIcon 
 } from 'lucide-react';
 
 // --- SUB-COMPONENTS  ---
@@ -13,6 +13,9 @@ const OvernightLogTab= () => {
   const [outStudents, setOutStudents] = useState([]);
   const [showOutModal, setShowOutModal] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [absentSearch, setAbsentSearch] = useState('');
+  const [gateSearch, setGateSearch] = useState('');
+  const [gateFilter, setGateFilter] = useState('All');
   // Initial Data Fetch (Only for Home Tab)
   useEffect(() => {
     fetchOvernightLogData();
@@ -55,6 +58,28 @@ const OvernightLogTab= () => {
       alert("Failed to reset system");
     }
   };
+
+  // FILTER OUT STUDENTS
+  const filteredOutStudents = outStudents.filter(s => {
+      const term = absentSearch.toLowerCase();
+      // Search by Name OR UID
+      return s.full_name.toLowerCase().includes(term) || s.uid.toLowerCase().includes(term);
+  });
+
+  // FILTER GATE LOGS 
+  const filteredRecentLogs = recentLogs.filter(log => {
+      const term = gateSearch.toLowerCase();
+      
+      // 1. Search Text (Name or UID)
+      const matchText = log.full_name.toLowerCase().includes(term) || log.uid.toLowerCase().includes(term);
+
+      // 2. Dropdown Filter (Status/Type)
+      const matchFilter = gateFilter === 'All' 
+        ? true 
+        : (gateFilter === 'Checked Out' ? log.status === 'out' : log.status === 'returned');
+
+      return matchText && matchFilter;
+  });
   
   return (
   <div className="animate-fade-in">
@@ -93,7 +118,7 @@ const OvernightLogTab= () => {
         >
           Reset Log
         </button>
-        <button onClick={fetchOvernightLogData} lassName="p-2 bg-white rounded-full shadow-sm hover:shadow-md transition">
+        <button onClick={fetchOvernightLogData} className="p-2 bg-white rounded-full shadow-sm hover:shadow-md transition">
           <RefreshCw size={20} className={`text-blue-600 ${loading ? 'animate-spin' : ''}`} />
         </button>
       </div>
@@ -103,6 +128,32 @@ const OvernightLogTab= () => {
     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
       <div className="p-6 border-b border-gray-50 flex justify-between items-center">
         <h3 className="font-bold text-gray-800">Recent Gate Activity</h3>
+      </div>
+      {/* NEW: SEARCH INPUT */}
+      <div className='flex flex-row pl-6'>
+        <div className="relative w-full md:w-auto">
+            <Search size={16} className="absolute left-3 top-2.5 text-gray-400" />
+            <input 
+                type="text" 
+                placeholder="Search Log..." 
+                value={gateSearch}
+                onChange={(e) => setGateSearch(e.target.value)}
+                className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-100 transition"
+            />
+        </div>
+        {/* NEW: STATUS FILTER */}
+        <div className="relative flex">
+            <Filter size={16} className="absolute left-3 top-2.5 text-gray-400" />
+            <select 
+                value={gateFilter}
+                onChange={(e) => setGateFilter(e.target.value)}
+                className="pl-9 pr-8 py-2 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-700 outline-none focus:ring-2 focus:ring-blue-100 cursor-pointer appearance-none"
+            >
+                <option value="All">All Activity</option>
+                <option value="Checked In">Returned</option>
+                <option value="Checked Out">Out</option>
+            </select>
+        </div>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-left">
@@ -115,7 +166,7 @@ const OvernightLogTab= () => {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">
-            {recentLogs.map((log) => (
+            {filteredRecentLogs.map((log) => (
               <tr key={log.id} className="hover:bg-gray-50 transition">
                 <td className="px-6 py-4">
                   <p className="font-bold text-gray-800">{log.full_name || "Unknown"}</p>
@@ -154,6 +205,16 @@ const OvernightLogTab= () => {
         <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-slide-up">
           <div className="bg-red-600 p-4 flex justify-between items-center text-white">
             <h3 className="font-bold text-lg">⚠️ Absent Students</h3>
+            <div className="relative w-full md:w-64">
+                <Search size={16} className="absolute left-3 top-2.5 text-gray-400" />
+                <input 
+                    type="text" 
+                    placeholder="Search Absent Student..." 
+                    value={absentSearch}
+                    onChange={(e) => setAbsentSearch(e.target.value)}
+                    className="text-black w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-red-100 focus:border-red-300 transition"
+                />
+            </div>
             <button onClick={() => setShowOutModal(false)} className="hover:bg-red-700 p-1 rounded-full transition">✕</button>
           </div>
           <div className="p-4 max-h-[60vh] overflow-y-auto">
@@ -170,7 +231,7 @@ const OvernightLogTab= () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {outStudents.map((student) => (
+                  {filteredOutStudents.map((student) => (
                     <tr key={student.uid} className="border-b last:border-0 hover:bg-gray-50">
                       <td className="py-3 font-medium text-gray-800">{student.full_name}</td>
                       <td className="py-3 text-sm text-gray-500">{student.uid}</td>
@@ -196,6 +257,7 @@ const GrievancesTab = () => {
   const [filterCategory, setFilterCategory] = useState('All'); 
   const [filterStatus, setFilterStatus] = useState('All');
   const [searchTerm, setSearchTerm] = useState('');
+  const [evidenceModal, setEvidenceModal] = useState(null);
 
   useEffect(() => {
     fetchGrievances();
@@ -281,8 +343,64 @@ const GrievancesTab = () => {
     }
   };
 
+  // --- EVIDENCE MODAL COMPONENT ---
+  const EvidenceModal = () => {
+    if (!evidenceModal) return null;
+
+    const isVideo = evidenceModal.endsWith('.mp4') || evidenceModal.endsWith('.webm');
+
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in">
+        <div className="relative bg-white rounded-2xl overflow-hidden max-w-3xl w-full shadow-2xl">
+          
+          {/* Header */}
+          <div className="flex justify-between items-center p-4 border-b border-gray-100 bg-gray-50">
+            <h3 className="font-bold text-gray-700">Evidence Review</h3>
+            <button 
+              onClick={() => setEvidenceModal(null)}
+              className="p-2 bg-white rounded-full hover:bg-gray-200 transition"
+            >
+              <X size={20} />
+            </button>
+          </div>
+
+          {/* Content */}
+          <div className="p-0 bg-black flex justify-center items-center min-h-[300px]">
+            {isVideo ? (
+              <video 
+                src={`http://localhost:3001${evidenceModal}`} 
+                controls 
+                autoPlay 
+                className="max-h-[60vh] w-full"
+              />
+            ) : (
+              <img 
+                src={`http://localhost:3001${evidenceModal}`} 
+                alt="Evidence" 
+                className="max-h-[60vh] object-contain"
+              />
+            )}
+          </div>
+          
+          {/* Footer */}
+          <div className="p-4 bg-gray-50 border-t border-gray-100 text-center">
+            <a 
+              href={`http://localhost:3001${evidenceModal}`} 
+              target="_blank" 
+              rel="noreferrer"
+              className="text-xs font-bold text-blue-600 hover:underline"
+            >
+              Open Original File
+            </a>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="animate-fade-in">
+      <EvidenceModal />
       <div className="flex justify-between items-center mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Grievances</h1>
@@ -448,9 +566,19 @@ const GrievancesTab = () => {
 
                   {/* Evidence Icon */}
                   <div className="ml-auto">
-                    <div className="w-8 h-8 bg-gray-50 rounded-lg border border-gray-200 flex items-center justify-center text-gray-300">
-                      <ImageIcon size={16} />
-                    </div>
+                    {g.img_url ? (
+                      <button 
+                        onClick={() => setEvidenceModal(g.img_url)}
+                        className="w-10 h-10 bg-blue-50 hover:bg-blue-100 text-blue-500 rounded-lg border border-blue-200 flex items-center justify-center transition-all"
+                        title="View Evidence"
+                      >
+                        {g.img_url.endsWith('.mp4') ? <FileVideo size={18} /> : <ImageIcon size={18} />}
+                      </button>
+                    ) : (
+                      <div className="w-10 h-10 bg-gray-50 rounded-lg border border-gray-200 flex items-center justify-center text-gray-300 cursor-not-allowed" title="No Evidence">
+                        <ImageIcon size={18} />
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

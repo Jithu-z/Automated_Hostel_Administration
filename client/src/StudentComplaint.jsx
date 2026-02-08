@@ -1,13 +1,20 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { 
-  AlertCircle, CheckCircle, Send, Home, PenTool, Clock, Plus, ArrowLeft, X, History 
+  AlertCircle, CheckCircle, Send, Home, PenTool, Clock, Plus, ArrowLeft, X, History, Upload, FileVideo 
 } from 'lucide-react';
 
 function StudentComplaint() {
   const [view, setView] = useState('loading'); // 'loading', 'list', 'form'
   const [complaints, setComplaints] = useState([]);
-  
+
+  // File Upload State
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState(null);
+  const [fileType, setFileType] = useState(null); // 'image' or 'video'
+  const fileInputRef = useRef(null);
+  const [uploadError, setUploadError] = useState(null);
+
   const [formData, setFormData] = useState({
     category: 'Electrical',
     room_no: '',
@@ -49,28 +56,62 @@ function StudentComplaint() {
     }
   };
 
-  const handleSubmit = async (e) => {
+  const handleFileSelect = (e) => {
+  const file = e.target.files[0];
+  if (file) {
+    // 1. Size Limit 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      setUploadError("File is too large (Max 10MB). Please compress it."); // <--- CHANGE HERE
+      return; 
+    }
+
+    // 2. Set Preview & Type
+    setUploadError(null); // Clear any previous errors
+    setSelectedFile(file);
+    setPreviewUrl(URL.createObjectURL(file));
+    setFileType(file.type.startsWith('video/') ? 'video' : 'image');
+  }
+};
+
+  const clearFile = () => {
+    setSelectedFile(null);
+    setPreviewUrl(null);
+    setFileType(null);
+    setUploadError(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+ const handleSubmit = async (e) => {
     e.preventDefault();
     setSubmitting(true);
+
     if (!formData.room_no || !formData.description) {
       alert("Please fill in all fields.");
       setSubmitting(false);
       return;
     }
 
+    // --- CREATE FORM DATA ---
+    const data = new FormData();
+    data.append('uid', uid);
+    data.append('category', formData.category);
+    data.append('room_no', formData.room_no);
+    data.append('description', formData.description);
+    if (selectedFile) {
+      data.append('evidence', selectedFile); 
+    }
+
     try {
-      await axios.post('http://10.218.123.123:3001/api/student/grievances', {
-        uid: uid,
-        room_no: formData.room_no,
-        category: formData.category,
-        description: formData.description
-      });
+      await axios.post('http://10.218.123.123:3001/api/student/grievances', data);
       setStatus('success');
       setFormData({ category: 'Electrical', room_no: '', description: '' });
+      clearFile();
+      
       setTimeout(() => {
         setStatus(null);
         fetchHistory(); 
       }, 1500);
+
     } catch (err) {
       setStatus('error');
     } finally {
@@ -168,6 +209,18 @@ function StudentComplaint() {
                     </div>
                   </div>
                   <p className="text-gray-600 text-sm leading-relaxed pl-1">"{c.description}"</p>
+                  {c.img_url && (
+                    <div className="mt-3">
+                       <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Attachment</p>
+                       <div className="h-16 w-16 rounded-lg overflow-hidden border border-gray-200 bg-gray-50 flex items-center justify-center">
+                          {c.img_url.endsWith('.mp4') || c.img_url.endsWith('.webm') ? (
+                             <FileVideo className="text-gray-400" />
+                          ) : (
+                             <img src={`http://10.218.123.123:3001${c.img_url}`} alt="proof" className="w-full h-full object-cover" />
+                          )}
+                       </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -236,6 +289,57 @@ function StudentComplaint() {
         <div>
           <label className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 block">Description</label>
           <textarea name="description" value={formData.description} onChange={handleChange} placeholder="endhaan vishayam?..kelkatte" className="bg-gray-50 w-full rounded-xl px-4 py-3 outline-none min-h-[100px]" />
+        </div>
+        <div>
+           <label className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 block">Evidence (Optional)</label>
+           
+           <input 
+             type="file" 
+             ref={fileInputRef}
+             accept="image/*,video/*"  // Accepts both images and videos
+             onChange={handleFileSelect} 
+             className="hidden" 
+           />
+
+           {!previewUrl ? (
+             <button 
+               type="button" 
+               onClick={() => fileInputRef.current.click()}
+               className={`w-full border-2 border-dashed rounded-xl py-6 flex flex-col items-center justify-center transition gap-2 ${
+                        uploadError ? 'border-red-300 bg-red-50' : 'border-gray-200 hover:bg-gray-50 hover:border-gray-300'
+                      }`}
+             >
+               <div className="bg-blue-50 p-3 rounded-full text-blue-500">
+                 {uploadError ? <AlertCircle size={24} /> : <Upload size={24} />}
+               </div>
+               <span className={`text-sm font-medium ${uploadError ? 'text-red-500' : 'text-gray-500'}`}>
+                 {uploadError ? 'Upload Failed' : 'Upload Photo or Video'}
+               </span>
+               <span className="text-[10px] text-gray-300">Max size 10MB</span>
+             </button>
+           ) : (
+             <div className="relative rounded-xl overflow-hidden border border-gray-200 bg-black">
+               {/* PREVIEW LOGIC: Check if it's a video or image */}
+               {fileType === 'video' ? (
+                 <video src={previewUrl} controls className="w-full h-48 object-contain" />
+               ) : (
+                 <img src={previewUrl} alt="Preview" className="w-full h-48 object-cover" />
+               )}
+               
+               <button 
+                 type="button" 
+                 onClick={clearFile}
+                 className="absolute top-2 right-2 bg-black/50 text-white p-1 rounded-full hover:bg-black/70 backdrop-blur-sm z-10"
+               >
+                 <X size={16} />
+               </button>
+             </div>
+           )}
+           {uploadError && (
+              <p className="text-xs text-red-500 font-bold mt-2 flex items-center gap-1 animate-pulse">
+                <AlertCircle size={12} /> {uploadError}
+              </p>
+           )}
         </div>
         <button type="button" onClick={handleSubmit} disabled={submitting} className={`w-full py-4 rounded-xl font-bold text-white shadow-lg ${submitting ? 'bg-blue-400' : 'bg-blue-600'}`}>{submitting ? 'Submitting...' : 'Submit Complaint'}</button>
       </form>
