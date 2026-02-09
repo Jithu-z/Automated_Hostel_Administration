@@ -305,6 +305,42 @@ app.delete('/api/warden/grievances/:id', (req, res) => {
     });
 });
 
+//Student Mabnagement Routes
+
+// --- GET ALL STUDENTS (With Checkout Counts) ---
+app.get('/api/warden/students', (req, res) => {
+    const sql = `
+        SELECT 
+            u.uid, 
+            u.full_name, 
+            u.room_no, 
+            u.phone_no, 
+            u.address,
+            u.password_hash as dob, 
+            (SELECT COUNT(*) FROM gate_logs WHERE uid = u.uid AND status = 'out') as checkout_count
+        FROM users u where u.role = 'student'
+        ORDER BY u.room_no ASC;
+        
+    `;
+
+    db.query(sql, (err, results) => {
+        if (err) return res.status(500).json(err);
+        res.json(results);
+    });
+});
+
+-
+app.put('/api/warden/students/:uid', (req, res) => {
+    const { uid } = req.params;
+    const { full_name, room_no, phone_no, address, dob } = req.body;
+    
+    const sql = "UPDATE users SET full_name=?, room_no=?, phone_no=?, address=?, password_hash=? WHERE uid=?";
+    
+    db.query(sql, [full_name, room_no, phone_no, address, dob, uid], (err, result) => {
+        if (err) return res.status(500).json(err);
+        res.json({ success: true });
+    });
+});
 
 app.listen(3001, () => {
     console.log('Server running on port 3001');

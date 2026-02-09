@@ -83,7 +83,7 @@ function Login({ setUser }) {
         ${loading ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`} 
         onClick={handleLogin}
         >
-            {loading ? 'Logging in...' : 'Login'} {/* <--- 3. Changes text */}
+            {loading ? 'Logging in...' : 'Login'}
         </button>
 
         <p className="text-center text-xs text-gray-400 mt-6">

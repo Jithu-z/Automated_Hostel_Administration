@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { 
   Home,Clock,RefreshCw,Trash2,Search, CheckCircle, ClipboardList, Utensils, Moon, AlertCircle, Users, Settings, LogOut, 
-  Filter,ListFilter,X,FileVideo, Image as ImageIcon 
+  Filter, ListFilter, X, FileVideo, Phone, Calendar, Shield, Edit2, Save,  Image as ImageIcon 
 } from 'lucide-react';
 
 // --- SUB-COMPONENTS  ---
@@ -129,7 +129,7 @@ const OvernightLogTab= () => {
       <div className="p-6 border-b border-gray-50 flex justify-between items-center">
         <h3 className="font-bold text-gray-800">Recent Gate Activity</h3>
       </div>
-      {/* NEW: SEARCH INPUT */}
+      {/* SEARCH INPUT */}
       <div className='flex flex-row pl-6'>
         <div className="relative w-full md:w-auto">
             <Search size={16} className="absolute left-3 top-2.5 text-gray-400" />
@@ -141,8 +141,8 @@ const OvernightLogTab= () => {
                 className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-100 transition"
             />
         </div>
-        {/* NEW: STATUS FILTER */}
-        <div className="relative flex">
+        {/* STATUS FILTER */}
+        <div className="ml-2 relative flex">
             <Filter size={16} className="absolute left-3 top-2.5 text-gray-400" />
             <select 
                 value={gateFilter}
@@ -590,11 +590,222 @@ const GrievancesTab = () => {
   );
 };
 
+// ---Student Management Tab ---
+const StudentMgmtTab = () => {
+  const [students, setStudents] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  
+  // Edit State
+  const [editingId, setEditingId] = useState(null); // ID of student being edited
+  const [editForm, setEditForm] = useState({}); // Temp data while editing
+
+  useEffect(() => {
+    fetchStudents();
+  }, []);
+
+  const fetchStudents = () => {
+    setLoading(true);
+    axios.get('http://localhost:3001/api/warden/students')
+      .then(res => setStudents(res.data))
+      .catch(err => console.error("Error fetching students:", err))
+      .finally(() => setLoading(false));
+  };
+
+  const startEdit = (student) => {
+    setEditingId(student.uid);
+    setEditForm({ ...student });
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditForm({});
+  };
+
+  const saveEdit = async () => {
+    try {
+      await axios.put(`http://localhost:3001/api/warden/students/${editingId}`, editForm);
+      
+      // Update local list without re-fetching
+      setStudents(students.map(s => s.uid === editingId ? { ...editForm, checkout_count: s.checkout_count } : s));
+      setEditingId(null);
+      alert("Student Details Updated");
+    } catch (err) {
+      alert("Failed to update details");
+    }
+  };
+
+const formatDOB = (dob) => {
+  if (!dob) return "N/A";
+
+  if (dob.length === 8 && !isNaN(dob)) {
+    return `${dob.slice(0, 2)}/${dob.slice(2, 4)}/${dob.slice(4)}`;
+  }
+  return "check dob format"; 
+};
+  // --- FILTER LOGIC ---
+  const filteredStudents = students.filter(s => {
+    const term = searchTerm.toLowerCase();
+    return (
+      s.full_name?.toLowerCase().includes(term) ||
+      s.uid?.toLowerCase().includes(term) ||
+      s.room_no?.toLowerCase().includes(term)
+    );
+  });
+
+  return (
+    <div className="animate-fade-in p-6">
+      
+      {/* HEADER */}
+      <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-800">Student Registry</h1>
+          <p className="text-sm text-gray-500">Manage {students.length} residents</p>
+        </div>
+
+        {/* SEARCH */}
+        <div className="relative w-full md:w-72">
+           <Search size={18} className="absolute left-3 top-3 text-gray-400" />
+           <input 
+             type="text" 
+             placeholder="Search Name, UID, Room..." 
+             value={searchTerm}
+             onChange={(e) => setSearchTerm(e.target.value)}
+             className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-100 transition shadow-sm"
+           />
+        </div>
+      </div>
+
+      {/* TABLE */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead className="bg-gray-50 text-xs font-bold text-gray-400 uppercase">
+              <tr>
+                <th className="px-6 py-4">Student Profile</th>
+                <th className="px-6 py-4">Room & Address</th>
+                <th className="px-6 py-4">Activity</th>
+                <th className="px-6 py-4 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50 text-sm">
+              {filteredStudents.map((s) => (
+                <tr key={s.uid} className={`transition ${editingId === s.uid ? 'bg-blue-50/50' : 'hover:bg-gray-50'}`}>
+                  
+                  {/* COL 1: IDENTITY */}
+                  <td className="px-6 py-4">
+                    {editingId === s.uid ? (
+                        <div className="space-y-2">
+                            <input 
+                              value={editForm.full_name} 
+                              onChange={(e) => setEditForm({...editForm, full_name: e.target.value})}
+                              className="w-full p-1 border rounded text-sm font-bold"
+                            />
+                            <input 
+                              value={editForm.phone_no} 
+                              onChange={(e) => setEditForm({...editForm, phone_no: e.target.value})}
+                              className="w-full p-1 border rounded text-xs"
+                              placeholder="Phone"
+                            />
+                        </div>
+                    ) : (
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center font-bold text-lg">
+                            {s.full_name ? s.full_name.charAt(0) : '?'}
+                          </div>
+                          <div>
+                            <p className="font-bold text-gray-800">{s.full_name}</p>
+                            <p className="text-xs text-gray-400 font-mono">{s.uid}</p>
+                            <div className="flex items-center gap-1 mt-1 text-xs text-gray-500">
+                               <Phone size={10} /> {s.phone_no || "No Phone"}
+                            </div>
+                          </div>
+                        </div>
+                    )}
+                  </td>
+
+                  {/* COL 2: RESIDENCY */}
+                  <td className="px-6 py-4 max-w-xs">
+                    {editingId === s.uid ? (
+                        <div className="space-y-2">
+                             <input 
+                              value={editForm.room_no || ''} 
+                              onChange={(e) => setEditForm({...editForm, room_no: e.target.value})}
+                              className="w-24 p-1 border rounded text-sm font-bold"
+                              placeholder="Room"
+                            />
+                            <textarea 
+                              value={editForm.address || ''} 
+                              onChange={(e) => setEditForm({...editForm, address: e.target.value})}
+                              className="w-full p-1 border rounded text-xs"
+                              rows={2}
+                              placeholder="Address"
+                            />
+                        </div>
+                    ) : (
+                        <div>
+                           <div className="flex items-center gap-2 mb-1">
+                              <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs font-bold">
+                                {s.room_no || "Unassigned"}
+                              </span>
+                           </div>
+                           <p className="text-xs text-gray-500 truncate max-w-[200px]" title={s.address}>
+                             {s.address || "No Address Provided"}
+                           </p>
+                           {/* Using Password Hash as DOB holder*/}
+                           <p className="text-[10px] text-gray-400 mt-1 flex items-center gap-1">
+                             <Calendar size={10}/> DOB: {formatDOB(s.dob)}
+                           </p>
+                        </div>
+                    )}
+                  </td>
+
+                  {/* COL 3: STATS */}
+                  <td className="px-6 py-4">
+                     <div className="flex flex-col gap-1">
+                        <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Gate Activity</span>
+                        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-bold w-fit ${s.checkout_count > 10 ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-600'}`}>
+                           <Shield size={12} /> {s.checkout_count || 0} Exits
+                        </span>
+                     </div>
+                  </td>
+
+                  {/* COL 4: ACTIONS */}
+                  <td className="px-6 py-4 text-right">
+                    {editingId === s.uid ? (
+                        <div className="flex justify-end gap-2">
+                            <button onClick={saveEdit} className="p-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200" title="Save">
+                                <Save size={16} />
+                            </button>
+                            <button onClick={cancelEdit} className="p-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200" title="Cancel">
+                                <X size={16} />
+                            </button>
+                        </div>
+                    ) : (
+                        <button onClick={() => startEdit(s)} className="p-2 text-gray-400 hover:bg-blue-50 hover:text-blue-600 rounded-lg transition">
+                           <Edit2 size={16} />
+                        </button>
+                    )}
+                  </td>
+
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          
+          {filteredStudents.length === 0 && (
+            <div className="text-center py-12 text-gray-400">No students found matching "{searchTerm}"</div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // Dummy Tabs
 const MessReviewsSkeleton = () => <div className="p-10 text-center text-gray-400 border-2 border-dashed border-gray-200 rounded-2xl">Mess Reviews Interface</div>;
 const MenuSkeleton = () => <div className="p-10 text-center text-gray-400 border-2 border-dashed border-gray-200 rounded-2xl">Menu Management Interface</div>;
 const DashboardHomeSkeleton = () => <div className="p-10 text-center text-gray-400 border-2 border-dashed border-gray-200 rounded-2xl">Home Interface</div>;
-const StudentMgmtSkeleton = () => <div className="p-10 text-center text-gray-400 border-2 border-dashed border-gray-200 rounded-2xl">Student Management Interface</div>;
 
 
 // Main layout
@@ -661,7 +872,7 @@ function WardenDashboard() {
         {activeTab === 'menu' && <MenuSkeleton />}
         {activeTab === 'home' && <DashboardHomeSkeleton />}
         {activeTab === 'grievances' && <GrievancesTab />}
-        {activeTab === 'students' && <StudentMgmtSkeleton />}
+        {activeTab === 'students' && <StudentMgmtTab />}
       </main>
 
     </div>

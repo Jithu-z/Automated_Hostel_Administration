@@ -7,7 +7,7 @@ function AppLayout({ user }) {
 
   const navItems = [
     { name: 'Mess Review', path: '/app/mess', icon: <ClipboardList size={20} /> },
-    { name: 'Digital Gatepass', path: '/app/gatepass', icon: <DoorOpen size={20} /> }, // Matches "Check-in, Check-out"
+    { name: 'Digital Gatepass', path: '/app/gatepass', icon: <DoorOpen size={20} /> },
     { name: 'Complaint', path: '/app/complaint', icon: <MessageSquare size={20} /> },
   ];
   const handleLogout = () => {
