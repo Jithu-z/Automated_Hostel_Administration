@@ -397,6 +397,37 @@ const GrievancesTab = () => {
       </div>
     );
   };
+ //Resolve all
+  const handleResolveAll = async () => {
+    // 1. Get only the Unresolved items from the current filtered view
+    const itemsToResolve = filteredGrievances.filter(g => g.status !== 'Resolved');
+
+    if (itemsToResolve.length === 0) return;
+
+    // 2. Confirmation
+    const confirmMsg = `Are you sure you want to mark ${itemsToResolve.length} complaints as RESOLVED? \n\nThis will remove them from the active list and DELETE any attached evidence.`;
+    if (!window.confirm(confirmMsg)) return;
+
+    setLoading(true);
+
+    try {
+      // 3. Process all updates in parallel
+      // We map each item to an axios PUT request
+      await Promise.all(itemsToResolve.map(g => 
+        axios.put(`http://localhost:3001/api/warden/grievances/${g.id}`, { status: 'Resolved' })
+      ));
+
+      // 4. Success & Refresh
+      alert(`Successfully resolved ${itemsToResolve.length} complaints.`);
+      fetchGrievances(); // Refresh list to update UI
+    } catch (err) {
+      console.error(err);
+      alert("Some requests failed. Please refresh and try again.");
+      fetchGrievances();
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="animate-fade-in">
@@ -448,6 +479,17 @@ const GrievancesTab = () => {
               <option value="Other">Other</option>
             </select>
           </div>
+          {/* --- NEW: RESOLVE ALL BUTTON --- */}
+          {viewMode === 'active' && filteredGrievances.length > 0 && (
+            <button 
+              onClick={handleResolveAll}
+              className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-xl text-sm font-bold shadow-md hover:bg-green-700 active:scale-95 transition"
+              title="Resolve all currently visible complaints"
+            >
+              <CheckCircle size={16} /> 
+              <span className="hidden md:inline">Resolve All ({filteredGrievances.length})</span>
+            </button>
+          )}
           {viewMode === 'history' && filteredGrievances.length > 0 && (
              <button 
                onClick={handleClearHistory}

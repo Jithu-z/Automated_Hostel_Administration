@@ -15,23 +15,24 @@ function StudentComplaint() {
   const fileInputRef = useRef(null);
   const [uploadError, setUploadError] = useState(null);
 
+  const user = JSON.parse(localStorage.getItem('user'));
+  const uid = user ? user.uid : 'Unknown';
+
   const [formData, setFormData] = useState({
     category: 'Electrical',
-    room_no: '',
+    room_no: user.room_no?user.room_no:'',
     description: ''
   });
   const [submitting, setSubmitting] = useState(false);
   const [status, setStatus] = useState(null);
 
-  const user = JSON.parse(localStorage.getItem('user'));
-  const uid = user ? user.uid : 'Unknown';
 
   useEffect(() => {
     fetchHistory();
   }, []);
 
   const fetchHistory = () => {
-    axios.get(`http://10.218.123.123:3001/api/student/grievances/${uid}`)
+    axios.get(`http://10.180.178.123:3001/api/student/grievances/${uid}`)
       .then(res => {
         setComplaints(res.data);
         if (res.data.length === 0) setView('form');
@@ -50,7 +51,7 @@ function StudentComplaint() {
     setComplaints(updated);
 
     try {
-      await axios.put(`http://10.218.123.123:3001/api/student/grievances/acknowledge/${id}`);
+      await axios.put(`http://10.180.178.123:3001/api/student/grievances/acknowledge/${id}`);
     } catch (err) {
       console.error("Failed to acknowledge");
     }
@@ -102,9 +103,9 @@ function StudentComplaint() {
     }
 
     try {
-      await axios.post('http://10.218.123.123:3001/api/student/grievances', data);
+      await axios.post('http://10.180.178.123:3001/api/student/grievances', data);
       setStatus('success');
-      setFormData({ category: 'Electrical', room_no: '', description: '' });
+      setFormData({ category: 'Electrical', room_no: user.room_no?user.room_no:'', description: '' });
       clearFile();
       
       setTimeout(() => {
@@ -216,7 +217,7 @@ function StudentComplaint() {
                           {c.img_url.endsWith('.mp4') || c.img_url.endsWith('.webm') ? (
                              <FileVideo className="text-gray-400" />
                           ) : (
-                             <img src={`http://10.218.123.123:3001${c.img_url}`} alt="proof" className="w-full h-full object-cover" />
+                             <img src={`http://10.180.178.123:3001${c.img_url}`} alt="proof" className="w-full h-full object-cover" />
                           )}
                        </div>
                     </div>
@@ -253,7 +254,7 @@ function StudentComplaint() {
     );
   }
 
-  // --- FORM VIEW (Same as before) ---
+  // --- FORM VIEW ---
   return (
     <div className="animate-fade-in p-4 pb-24 max-w-lg mx-auto">
       <div className="mb-6 flex items-center gap-3">

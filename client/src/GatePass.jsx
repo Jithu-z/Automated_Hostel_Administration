@@ -24,13 +24,13 @@ function GatePass() {
   }, []);
 
   const fetchStatus = () => {
-    axios.get(`http://10.218.123.123:3001/api/gate/status/${studentId}`)
+    axios.get(`http://10.180.178.123:3001/api/gate/status/${studentId}`)
       .then(res => setStatus(res.data.status))
       .catch(err => console.error(err));
   };
 
   const fetchLogs = () => {
-  axios.get(`http://10.218.123.123:3001/api/student/logs/${studentId}`)
+  axios.get(`http://10.180.178.123:3001/api/student/logs/${studentId}`)
     .then(res => setLogs(res.data))
     .catch(err => console.error("Failed to fetch logs", err));
 };
@@ -74,7 +74,7 @@ function GatePass() {
   const performCheckIn = async (qrData) => {
     setLoading(true);
     try {
-      const res = await axios.post('http://10.218.123.123:3001/api/gate/log', {
+      const res = await axios.post('http://10.180.178.123:3001/api/gate/log', {
         student_id: studentId,
         action: 'in',
         reason: 'Returned via Scan',
@@ -109,7 +109,7 @@ function GatePass() {
     }
     setLoading(true);
     try {
-      const res = await axios.post('http://10.218.123.123:3001/api/gate/log', {
+      const res = await axios.post('http://10.180.178.123:3001/api/gate/log', {
         student_id: studentId,
         action: 'out',
         destination: destination,
@@ -204,7 +204,7 @@ function GatePass() {
       {/* --- CHECKOUT MODAL --- */}
       {showCheckoutModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4">
-          <div className="bg-white w-full max-w-sm rounded-3xl p-6 animate-slide-up">
+          <div className="bg-white mb-8 w-full max-w-sm rounded-3xl p-6 animate-slide-up">
             <h3 className="text-xl font-bold text-gray-900 mb-2">Check Out</h3>
             <div className="space-y-4 mt-4">
               <div>
