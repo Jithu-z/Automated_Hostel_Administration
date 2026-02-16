@@ -5,7 +5,7 @@ import AppLayout from './AppLayout';
 import GatePass from './GatePass';
 import StudentComplaint from './StudentComplaint';
 import WardenDashboard from './WardenDashboard';
-const MessReview = () => <div className="p-4 text-center text-gray-500 mt-10">Mess Review UI Coming Soon</div>;
+import MessReview from './MessReview';
 
 function App() {
   const [user, setUser] = useState(() => {

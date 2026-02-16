@@ -59,6 +59,32 @@ const OvernightLogTab= () => {
     }
   };
 
+  const checkinOverride = async (uid) =>{
+      if (!window.confirm(`Confirm Override check-in for uid ${uid}?`)) {
+        return;
+      }
+      setLoading(true);
+      try{
+        const res= await axios.post("http://localhost:3001/api/warden/checkinOverride",{
+          student_id: uid,
+          action: 'returned',
+          reason: 'Returned via Overridden check-in',
+          destination: 'Hostel',
+        })
+        if (res.data.success) {
+            setOutStudents(prev => prev.filter(student => student.uid !== uid));
+            fetchOvernightLogData();
+      }
+      }catch (err) {
+       if (err) {
+         console.error("Server Error:", err.response.data);
+         alert(`System Error: ${JSON.stringify(err.response.data)}`);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
   // FILTER OUT STUDENTS
   const filteredOutStudents = outStudents.filter(s => {
       const term = absentSearch.toLowerCase();
@@ -224,19 +250,21 @@ const OvernightLogTab= () => {
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="border-b text-xs text-gray-400 uppercase">
-                    <th className="py-2">Name</th>
-                    <th className="py-2">UID</th>
+                    <th className="p-2">Name</th>
+                    <th className="p-2">UID</th>
                     <th className="p-2">Phone No.</th>
                     <th className="p-2">Home Address</th>
+                    <th className="p-2">Action</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredOutStudents.map((student) => (
                     <tr key={student.uid} className="border-b last:border-0 hover:bg-gray-50">
-                      <td className="py-3 font-medium text-gray-800">{student.full_name}</td>
-                      <td className="py-3 text-sm text-gray-500">{student.uid}</td>
+                      <td className="p-2 font-medium text-gray-800">{student.full_name}</td>
+                      <td className="p-3 text-sm text-gray-500">{student.uid}</td>
                       <td className="p-3 text-sm text-gray-500">{student.phone_no}</td>
                       <td className="p-3 text-sm text-gray-500">{student.address}</td>
+                      <td className="p-3 text-sm text-gray-500"><button className="w-full bg-green-600 rounded-xl text-white active:scale-95" onClick={() => checkinOverride(student.uid)}>check-in</button></td>
                     </tr>
                   ))}
                 </tbody>

@@ -232,6 +232,35 @@ app.get('/api/warden/out-list', (req, res) =>{
     });
 });
 
+app.post('/api/warden/checkinOverride', (req, res) => {
+    const { student_id, action, reason, destination } = req.body;
+    const isPresent = action === 'returned' ? 1 : 0;
+
+    db.beginTransaction(err => {
+        if (err) return res.status(500).json(err);
+
+        const logSql = 'INSERT INTO gate_logs (uid, status, reason, destination) VALUES (?, ?, ?, ?)';
+        
+        db.query(logSql, [student_id, action, reason, destination], (err, result) => {
+            if (err) {
+                console.error("SQL ERROR (Insert Log):", err.sqlMessage);
+                return db.rollback(() => res.status(500).json({ error: err.sqlMessage }));
+            }
+            const userSql = 'UPDATE users SET is_present = ? WHERE uid = ?';
+            
+            db.query(userSql, [isPresent, student_id], (err, result) => {
+                if (err) {
+                    console.error("SQL ERROR (Update User):", err.sqlMessage);
+                    return db.rollback(() => res.status(500).json({ error: err.sqlMessage }));
+                }
+                db.commit(err => {
+                    if (err) return db.rollback(() => res.status(500).json(err));
+                    res.json({ success: true, new_status: action });
+                });
+            });
+        });
+    });
+});
 
 //GRIEVANCE ROUTES
 

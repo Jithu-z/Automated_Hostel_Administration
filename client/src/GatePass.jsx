@@ -24,13 +24,13 @@ function GatePass() {
   }, []);
 
   const fetchStatus = () => {
-    axios.get(`http://10.180.178.123:3001/api/gate/status/${studentId}`)
+    axios.get(`http://10.50.196.123:3001/api/gate/status/${studentId}`)
       .then(res => setStatus(res.data.status))
       .catch(err => console.error(err));
   };
 
   const fetchLogs = () => {
-  axios.get(`http://10.180.178.123:3001/api/student/logs/${studentId}`)
+  axios.get(`http://10.50.196.123:3001/api/student/logs/${studentId}`)
     .then(res => setLogs(res.data))
     .catch(err => console.error("Failed to fetch logs", err));
 };
@@ -74,7 +74,7 @@ function GatePass() {
   const performCheckIn = async (qrData) => {
     setLoading(true);
     try {
-      const res = await axios.post('http://10.180.178.123:3001/api/gate/log', {
+      const res = await axios.post('http://10.50.196.123:3001/api/gate/log', {
         student_id: studentId,
         action: 'in',
         reason: 'Returned via Scan',
@@ -109,7 +109,7 @@ function GatePass() {
     }
     setLoading(true);
     try {
-      const res = await axios.post('http://10.180.178.123:3001/api/gate/log', {
+      const res = await axios.post('http://10.50.196.123:3001/api/gate/log', {
         student_id: studentId,
         action: 'out',
         destination: destination,
