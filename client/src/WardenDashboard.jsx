@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { 
   Home,Clock,RefreshCw,Trash2,Search, CheckCircle, ClipboardList, Utensils, Moon, AlertCircle, Users, Settings, LogOut, 
-  Filter, ListFilter, X, FileVideo, Phone, Calendar, Shield, Edit2, Save,  Image as ImageIcon 
+  Filter, ListFilter, X, FileVideo, Phone, Calendar, Shield, Edit2, Save, ChevronRight,  Image as ImageIcon 
 } from 'lucide-react';
 
 // --- SUB-COMPONENTS  ---
@@ -872,10 +872,163 @@ const formatDOB = (dob) => {
   );
 };
 
+
+const DashboardHome = ({setActiveTab}) => {
+  const [stats, setStats] = useState({
+    total_students: 0,
+    students_out: 0,
+    pending_grievances: 0,
+    mess_rating: 4.2, // Placeholder for AI
+    top_complaint: "Salt in Dal" // Placeholder for AI
+  });
+  
+  const today = new Date().toLocaleDateString('en-US', { 
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' 
+  });
+
+  useEffect(() => {
+    // Fetch live stats from your existing endpoint
+    axios.get('http://localhost:3001/api/warden/home-stats')
+      .then(res => setStats(prev => ({...prev, ...res.data}))) // Merge live stats with placeholders
+      .catch(err => console.error("Stats fetch error:", err));
+  }, []);
+
+  return (
+    <div className="animate-fade-in space-y-8 pb-10">
+      
+      {/* 1. HEADER */}
+      <div className="flex flex-col md:flex-row justify-between md:items-end gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-800">Warden Dashboard</h1>
+          <p className="text-gray-500 mt-1">System Overview & Alerts</p>
+        </div>
+        <div className="bg-white px-4 py-2 rounded-xl border border-gray-200 text-sm font-bold text-gray-600 shadow-sm flex items-center gap-2">
+           <Calendar size={16} className="text-blue-500"/> {today}
+        </div>
+      </div>
+
+      {/* 2. CRITICAL ALERTS ROW */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        
+        {/* Card A: Security (Live Data) */}
+        <div 
+          onClick={() => setActiveTab('overnight')}
+          className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition cursor-pointer group relative overflow-hidden"
+        >
+          <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition"><LogOut size={80} /></div>
+          <div className="flex justify-between items-start mb-4">
+            <div className={`p-3 rounded-xl ${stats.students_out > 0 ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>
+              <LogOut size={24} />
+            </div>
+            {stats.students_out > 0 && <span className="animate-pulse w-2 h-2 bg-red-500 rounded-full"></span>}
+          </div>
+          <h3 className="text-4xl font-bold text-gray-800 mb-1">{stats.students_out}</h3>
+          <p className="text-sm font-bold text-gray-400 group-hover:text-red-600 transition flex items-center gap-1">
+             Students Out <ChevronRight size={14}/>
+          </p>
+        </div>
+
+        {/* Card B: Maintenance (Live Data) */}
+        <div 
+          onClick={() => setActiveTab('grievances')}
+          className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition cursor-pointer group relative overflow-hidden"
+        >
+          <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition"><AlertCircle size={80} /></div>
+          <div className="flex justify-between items-start mb-4">
+            <div className={`p-3 rounded-xl ${stats.pending_grievances > 0 ? 'bg-orange-100 text-orange-600' : 'bg-gray-100 text-gray-600'}`}>
+              <AlertCircle size={24} />
+            </div>
+          </div>
+          <h3 className="text-4xl font-bold text-gray-800 mb-1">{stats.pending_grievances}</h3>
+          <p className="text-sm font-bold text-gray-400 group-hover:text-orange-600 transition flex items-center gap-1">
+             Pending Complaints <ChevronRight size={14}/>
+          </p>
+        </div>
+
+        {/* Card C: Mess Intelligence (AI Placeholder) */}
+        <div 
+          onClick={() => setActiveTab('mess')}
+          className="bg-gradient-to-br from-blue-600 to-blue-800 p-6 rounded-2xl shadow-lg text-white relative overflow-hidden cursor-pointer group"
+        >
+          <div className="relative z-10">
+             <div className="flex justify-between items-start mb-4">
+                <div className="p-2 bg-white/20 rounded-lg"><Utensils size={20}/></div>
+                <span className="bg-white/20 px-2 py-0.5 rounded text-xs font-bold">AI Insight</span>
+             </div>
+             <div className="flex items-end gap-2 mb-1">
+                <h3 className="text-4xl font-bold">{stats.mess_rating}</h3>
+                <span className="text-lg font-medium text-blue-200 mb-1">/ 5</span>
+             </div>
+             <p className="text-sm text-blue-100 opacity-90">Avg. Food Rating Today</p>
+             
+             <div className="mt-4 pt-4 border-t border-white/10">
+                <p className="text-xs uppercase text-blue-300 font-bold mb-1">Top Issue Detected</p>
+                <p className="font-medium text-white flex items-center gap-2">
+                   ⚠️ {stats.top_complaint}
+                </p>
+             </div>
+          </div>
+          {/* Decorative Graph Line */}
+          <div className="absolute bottom-0 left-0 w-full h-16 opacity-20">
+             <svg viewBox="0 0 100 20" className="fill-current text-white">
+                <path d="M0 20 L0 10 Q20 5 40 12 T80 8 T100 15 L100 20 Z" />
+             </svg>
+          </div>
+        </div>
+
+      </div>
+
+      {/* 3. FUNCTIONALITY GRID (The "Launcher") */}
+      <div>
+        <h3 className="font-bold text-gray-800 mb-4 text-lg">System Modules</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            
+            {/* Student Mgmt */}
+            <button onClick={() => setActiveTab('students')} className="p-5 bg-white border border-gray-200 rounded-2xl hover:border-blue-400 hover:shadow-lg transition text-left group flex flex-col justify-between h-32">
+               <div className="bg-blue-50 w-fit p-3 rounded-xl text-blue-600 group-hover:scale-110 transition mb-3"><Users size={22}/></div>
+               <div>
+                  <h3 className="font-bold text-gray-700">Resident Directory</h3>
+                  <p className="text-xs text-gray-400 mt-0.5">Manage {stats.total_students} students</p>
+               </div>
+            </button>
+
+            {/* Menu Mgmt */}
+            <button onClick={() => setActiveTab('menu')} className="p-5 bg-white border border-gray-200 rounded-2xl hover:border-purple-400 hover:shadow-lg transition text-left group flex flex-col justify-between h-32">
+               <div className="bg-purple-50 w-fit p-3 rounded-xl text-purple-600 group-hover:scale-110 transition mb-3"><ClipboardList size={22}/></div>
+               <div>
+                  <h3 className="font-bold text-gray-700">Weekly Menu</h3>
+                  <p className="text-xs text-gray-400 mt-0.5">Update food schedule</p>
+               </div>
+            </button>
+
+            {/* Gate Logs */}
+            <button onClick={() => setActiveTab('overnight')} className="p-5 bg-white border border-gray-200 rounded-2xl hover:border-red-400 hover:shadow-lg transition text-left group flex flex-col justify-between h-32">
+               <div className="bg-red-50 w-fit p-3 rounded-xl text-red-600 group-hover:scale-110 transition mb-3"><Moon size={22}/></div>
+               <div>
+                  <h3 className="font-bold text-gray-700">Overnight Log</h3>
+                  <p className="text-xs text-gray-400 mt-0.5">Track late entries</p>
+               </div>
+            </button>
+
+            {/* Mess Reviews */}
+            <button onClick={() => setActiveTab('mess')} className="p-5 bg-white border border-gray-200 rounded-2xl hover:border-green-400 hover:shadow-lg transition text-left group flex flex-col justify-between h-32">
+               <div className="bg-green-50 w-fit p-3 rounded-xl text-green-600 group-hover:scale-110 transition mb-3"><CheckCircle size={22}/></div>
+               <div>
+                  <h3 className="font-bold text-gray-700">Feedback Hub</h3>
+                  <p className="text-xs text-gray-400 mt-0.5">Analyze student ratings</p>
+               </div>
+            </button>
+
+        </div>
+      </div>
+
+    </div>
+  );
+};
+
 // Dummy Tabs
 const MessReviewsSkeleton = () => <div className="p-10 text-center text-gray-400 border-2 border-dashed border-gray-200 rounded-2xl">Mess Reviews Interface</div>;
-const MenuSkeleton = () => <div className="p-10 text-center text-gray-400 border-2 border-dashed border-gray-200 rounded-2xl">Menu Management Interface</div>;
-const DashboardHomeSkeleton = () => <div className="p-10 text-center text-gray-400 border-2 border-dashed border-gray-200 rounded-2xl">Home Interface</div>;
+const MenuSkeleton = () => <div className="p-10 text-center text-gray-400 border-2 border-dashed border-gray-200 rounded-2xl">Menu Management Interface</div>
 
 
 // Main layout
@@ -940,7 +1093,7 @@ function WardenDashboard() {
         {activeTab === 'overnight' && <OvernightLogTab />}
         {activeTab === 'mess' && <MessReviewsSkeleton />}
         {activeTab === 'menu' && <MenuSkeleton />}
-        {activeTab === 'home' && <DashboardHomeSkeleton />}
+        {activeTab === 'home' && <DashboardHome setActiveTab={setActiveTab}/>}
         {activeTab === 'grievances' && <GrievancesTab />}
         {activeTab === 'students' && <StudentMgmtTab />}
       </main>

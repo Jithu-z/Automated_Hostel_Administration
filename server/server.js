@@ -371,6 +371,54 @@ app.put('/api/warden/students/:uid', (req, res) => {
     });
 });
 
+
+//DashboardHome Routes
+
+app.get('/api/warden/home-stats', (req, res) => {
+    const stats = {};
+
+    const q1 = "SELECT COUNT(*) as count FROM users";
+    
+    const q2 = "SELECT COUNT(*) as count FROM grievances WHERE status != 'Resolved'";
+    const q3 = `
+        SELECT COUNT(*) as count FROM (
+            SELECT uid, 
+                   SUBSTRING_INDEX(GROUP_CONCAT(status ORDER BY exit_time DESC), ',', 1) as last_action
+            FROM gate_logs 
+            GROUP BY uid
+        ) as status_table 
+        WHERE last_action = 'out'
+    `;
+
+    db.query(q1, (err, r1) => {
+        if(err) {
+            console.error("Stats Error (Users):", err);
+            return res.status(500).json(err);
+        }
+        stats.total_students = r1[0].count;
+
+        db.query(q2, (err, r2) => {
+            if(err) {
+                console.error("Stats Error (Grievances):", err);
+                return res.status(500).json(err);
+            }
+            stats.pending_grievances = r2[0].count;
+
+            db.query(q3, (err, r3) => {
+                if(err) {
+                    console.error("Stats Error (Gate):", err);
+                    return res.status(500).json(err);
+                }
+                stats.students_out = r3[0].count;
+                
+                // Final Response
+                // Note: 'mess_rating' and 'top_complaint' are handled by Frontend defaults 
+                // until the AI module is ready, sending the hard numbers here.
+                res.json(stats);
+            });
+        });
+    });
+});
 app.listen(3001, () => {
     console.log('Server running on port 3001');
 });
