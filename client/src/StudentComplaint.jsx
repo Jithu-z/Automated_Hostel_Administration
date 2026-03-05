@@ -32,7 +32,7 @@ function StudentComplaint() {
   }, []);
 
   const fetchHistory = () => {
-    axios.get(`http://10.50.196.123:3001/api/student/grievances/${uid}`)
+    axios.get(`http://10.42.108.171:3001/api/student/grievances/${uid}`)
       .then(res => {
         setComplaints(res.data);
         if (res.data.length === 0) setView('form');
@@ -51,7 +51,7 @@ function StudentComplaint() {
     setComplaints(updated);
 
     try {
-      await axios.put(`http://10.50.196.123:3001/api/student/grievances/acknowledge/${id}`);
+      await axios.put(`http://10.42.108.171:3001/api/student/grievances/acknowledge/${id}`);
     } catch (err) {
       console.error("Failed to acknowledge");
     }
@@ -103,7 +103,7 @@ function StudentComplaint() {
     }
 
     try {
-      await axios.post('http://10.50.196.123:3001/api/student/grievances', data);
+      await axios.post('http://10.42.108.171:3001/api/student/grievances', data);
       setStatus('success');
       setFormData({ category: 'Electrical', room_no: user.room_no?user.room_no:'', description: '' });
       clearFile();
@@ -217,7 +217,7 @@ function StudentComplaint() {
                           {c.img_url.endsWith('.mp4') || c.img_url.endsWith('.webm') ? (
                              <FileVideo className="text-gray-400" />
                           ) : (
-                             <img src={`http://10.50.196.123:3001${c.img_url}`} alt="proof" className="w-full h-full object-cover" />
+                             <img src={`http://10.42.108.171:3001${c.img_url}`} alt="proof" className="w-full h-full object-cover" />
                           )}
                        </div>
                     </div>
@@ -264,7 +264,7 @@ function StudentComplaint() {
           </button>
         )}
         <div>
-          <h1 className="text-2xl font-bold text-gray-800">Vishayam aano mone?</h1>
+          <h1 className="text-2xl font-bold text-gray-800">GRIEVANCE FORM</h1>
           <p className="text-gray-500 text-sm">Facing trouble? Let the warden know.</p>
         </div>
       </div>
@@ -289,7 +289,7 @@ function StudentComplaint() {
         </div>
         <div>
           <label className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 block">Description</label>
-          <textarea name="description" value={formData.description} onChange={handleChange} placeholder="endhaan vishayam?..kelkatte" className="bg-gray-50 w-full rounded-xl px-4 py-3 outline-none min-h-[100px]" />
+          <textarea name="description" value={formData.description} onChange={handleChange} placeholder="Enter description......." className="bg-gray-50 w-full rounded-xl px-4 py-3 outline-none min-h-[100px]" />
         </div>
         <div>
            <label className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 block">Evidence (Optional)</label>

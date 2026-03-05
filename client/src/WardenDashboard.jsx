@@ -872,7 +872,7 @@ const formatDOB = (dob) => {
   );
 };
 
-
+// ---Home---
 const DashboardHome = ({setActiveTab}) => {
   const [stats, setStats] = useState({
     total_students: 0,
@@ -951,22 +951,7 @@ const DashboardHome = ({setActiveTab}) => {
           className="bg-gradient-to-br from-blue-600 to-blue-800 p-6 rounded-2xl shadow-lg text-white relative overflow-hidden cursor-pointer group"
         >
           <div className="relative z-10">
-             <div className="flex justify-between items-start mb-4">
-                <div className="p-2 bg-white/20 rounded-lg"><Utensils size={20}/></div>
-                <span className="bg-white/20 px-2 py-0.5 rounded text-xs font-bold">AI Insight</span>
-             </div>
-             <div className="flex items-end gap-2 mb-1">
-                <h3 className="text-4xl font-bold">{stats.mess_rating}</h3>
-                <span className="text-lg font-medium text-blue-200 mb-1">/ 5</span>
-             </div>
-             <p className="text-sm text-blue-100 opacity-90">Avg. Food Rating Today</p>
-             
-             <div className="mt-4 pt-4 border-t border-white/10">
-                <p className="text-xs uppercase text-blue-300 font-bold mb-1">Top Issue Detected</p>
-                <p className="font-medium text-white flex items-center gap-2">
-                   ⚠️ {stats.top_complaint}
-                </p>
-             </div>
+             <p>Mess Review Briefings</p>
           </div>
           {/* Decorative Graph Line */}
           <div className="absolute bottom-0 left-0 w-full h-16 opacity-20">
@@ -1025,10 +1010,434 @@ const DashboardHome = ({setActiveTab}) => {
     </div>
   );
 };
+// ---Menu Tab--
+const MenuTab = () =>{
+    // --- STATE ---
+  const [weeklyMenu, setWeeklyMenu] = useState([]);
+  const [catalog, setCatalog] = useState([]);
+// Change the dummy data to empty 24-hour formats
+  const [mealTimings, setMealTimings] = useState({
+    Breakfast: { start: '00:00', end: '00:00' },
+    Lunch: { start: '00:00', end: '00:00' },
+    Dinner: { start: '00:00', end: '00:00' }
+  });
+  
+  // Add a new state for the Time Editor Modal
+  const [timeEditModal, setTimeEditModal] = useState(null); // Will hold { meal: 'Breakfast', start: '07:30', end: '09:30' }
+  
+  // --- MODAL STATES ---
+  const [isCatalogModalOpen, setIsCatalogModalOpen] = useState(false);
+  const [assignModalData, setAssignModalData] = useState(null); // Will hold { dateString, mealType } when a grid slot is clicked
+
+  // --- FORM STATES ---
+  const [newDish, setNewDish] = useState({ dish_name: '', diet_type: 'Veg', cost: '', effort_score: '' });
+  const [selectedDishId, setSelectedDishId] = useState('');
+
+  // --- HANDLERS ---
+  const handleAddDish = async (e) => {
+    e.preventDefault();
+    try {
+      await axios.post('http://localhost:3001/api/admin/menu-catalog', newDish);
+      setIsCatalogModalOpen(false);
+      setNewDish({ dish_name: '', diet_type: 'Veg', cost: '', effort_score: '' }); // Reset form
+      fetchCatalog(); // Refresh the catalog so the new dish is instantly available
+    } catch (err) {
+      console.error("Error adding dish:", err);
+      alert("Failed to add dish.");
+    }
+  };
+
+  const handleAssignDish = async (e) => {
+    e.preventDefault();
+    if (!selectedDishId) return alert("Please select a dish!");
+    
+    try {
+      await axios.post('http://localhost:3001/api/admin/daily-menu', {
+        serve_date: assignModalData.dateString,
+        meal_type: assignModalData.mealType,
+        dish_id: selectedDishId
+      });
+      setAssignModalData(null); // Close the modal
+      setSelectedDishId(''); // Reset selection
+      fetchWeeklyMenu(); // Instantly refresh the grid to show the new assignment
+    } catch (err) {
+      console.error("Error scheduling dish:", err);
+      alert("Failed to schedule dish.");
+    }
+  };
+
+  const handleRemoveDish = async (scheduleId, dishName) => {
+    // A quick confirmation so they don't accidentally click it
+    if (!window.confirm(`Are you sure you want to remove ${dishName} from this slot?`)) return;
+
+    try {
+      await axios.delete(`http://localhost:3001/api/admin/daily-menu/${scheduleId}`);
+      fetchWeeklyMenu(); // Instantly refresh the grid to show it's gone
+    } catch (err) {
+      console.error("Error removing dish:", err);
+      alert("Failed to remove dish.");
+    }
+  };
+
+  const handleApproveWeek = async () => {
+    // We already have the dates calculated in your weekDays array!
+    const startStr = weekDays[0].dateString;
+    const endStr = weekDays[6].dateString;
+
+    if (!window.confirm("Are you sure you want to approve this week's menu? This will make it visible to students.")) return;
+
+    try {
+      await axios.put('http://localhost:3001/api/admin/daily-menu/approve', {
+        start_date: startStr,
+        end_date: endStr
+      });
+      alert("Week's menu approved successfully!");
+      fetchWeeklyMenu(); // Refresh the grid
+    } catch (err) {
+      console.error("Error approving menu:", err);
+      alert("Failed to approve menu.");
+    }
+  };
+  // Track the start of the currently viewed week (Defaults to this week's Monday)
+  const [weekStart, setWeekStart] = useState(() => {
+    const d = new Date();
+    const day = d.getDay(); // 0 = Sunday, 1 = Monday, etc.
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Adjust when day is Sunday
+    return new Date(d.setDate(diff));
+  });
+
+  // Get "Today" formatted exactly like the database (YYYY-MM-DD)
+  // For example, today will format as "2026-03-02"
+  const todayString = new Date().toLocaleDateString('en-CA');
+
+  // --- HELPER: GENERATE THE 7 DAYS ---
+  // This creates an array of 7 objects for the grid rows based on weekStart
+  const weekDays = Array.from({ length: 7 }).map((_, i) => {
+    const date = new Date(weekStart);
+    date.setDate(date.getDate() + i);
+    return {
+      dayName: date.toLocaleDateString('en-US', { weekday: 'long' }),
+      dateString: date.toLocaleDateString('en-CA') // YYYY-MM-DD
+    };
+  });
+
+  // --- DATA FETCHING ---
+  useEffect(() => {
+    fetchCatalog();
+    fetchWeeklyMenu();
+    fetchTimings();
+  }, [weekStart]); // Re-fetch if the Warden clicks to the next/prev week
+
+  const fetchCatalog = async () => {
+    try {
+      const res = await axios.get('http://localhost:3001/api/admin/menu-catalog');
+      setCatalog(res.data);
+    } catch (err) {
+      console.error("Failed to fetch catalog", err);
+    }
+  };
+
+  const fetchWeeklyMenu = async () => {
+    const startStr = weekDays[0].dateString;
+    const endStr = weekDays[6].dateString;
+    try {
+      const res = await axios.get(`http://localhost:3001/api/admin/weekly-menu?start=${startStr}&end=${endStr}`);
+      setWeeklyMenu(res.data);
+    } catch (err) {
+      console.error("Failed to fetch weekly schedule", err);
+    }
+  };
+
+  // Helper to find a specific dish in our fetched data
+  const getDishesForSlot = (date, mealType) => {
+    return weeklyMenu.filter(m => m.serve_date === date && m.meal_type === mealType);  
+  };
+
+  const fetchTimings = async () => {
+    try {
+      const res = await axios.get('http://localhost:3001/api/admin/meal-timings');
+      setMealTimings(res.data);
+    } catch (err) {
+      console.error("Failed to fetch timings", err);
+    }
+  };
+
+  const handleUpdateTiming = async (e) => {
+    e.preventDefault();
+    try {
+      await axios.put('http://localhost:3001/api/admin/meal-timings', {
+        meal_type: timeEditModal.meal,
+        start_time: timeEditModal.start,
+        end_time: timeEditModal.end
+      });
+      fetchTimings(); // Refresh the headers to show the new times
+      setTimeEditModal(null); // Close modal
+    } catch (err) {
+      console.error("Error updating time:", err);
+      alert("Failed to update timing.");
+    }
+  };
+
+  // Helper to make 24hr time look nice in the table header (e.g., 14:30 -> 2:30 PM)
+  const format12Hour = (time24) => {
+    if (!time24 || time24 === '00:00') return '';
+    const [h, m] = time24.split(':');
+    const hours = parseInt(h, 10);
+    const suffix = hours >= 12 ? 'PM' : 'AM';
+    const displayHours = hours % 12 || 12;
+    return `${displayHours}:${m} ${suffix}`;
+  };
+
+  return (
+    <div className="p-6 bg-gray-50 min-h-screen">
+      <div className="max-w-6xl mx-auto bg-white rounded-xl shadow-md overflow-hidden">
+        
+        {/* HEADER */}
+        <div className="p-6 border-b flex justify-between items-center bg-gray-800 text-white">
+          <h2 className="text-2xl font-bold">Weekly Menu Planner</h2>
+          <button className="bg-green-500 hover:bg-green-600 px-4 py-2 rounded shadow transition" onClick={() => setIsCatalogModalOpen(true)}>
+            + Manage Catalog
+          </button>
+        </div>
+
+        {/* THE GRID */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-gray-100 text-gray-700 uppercase text-sm">
+                <th className="p-4 border-b w-1/4">Day / Date</th>
+                
+                {/* Dynamically Map the Meal Headers to include times */}
+                {['Breakfast', 'Lunch', 'Dinner'].map((meal) => (
+                  <th key={meal} className="p-4 border-b w-1/4 group relative">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className="block text-base font-bold">{meal}</span>
+                        {/* Use the new formatter here! */}
+                        <span className="text-xs text-gray-500 font-normal lowercase tracking-wide">
+                          {format12Hour(mealTimings[meal].start)} - {format12Hour(mealTimings[meal].end)}
+                        </span>
+                      </div>
+                      
+                      {/* Make the button actually open the modal */}
+                      <button 
+                        className="opacity-0 group-hover:opacity-100 transition-opacity text-blue-500 text-xs hover:underline bg-blue-50 px-2 py-1 rounded"
+                        onClick={() => setTimeEditModal({ meal: meal, start: mealTimings[meal].start, end: mealTimings[meal].end })}
+                      >
+                        Edit Time
+                      </button>
+                    </div>
+                  </th>
+                ))}
+                
+              </tr>
+            </thead>
+            <tbody>
+              {weekDays.map((day) => {
+                const isToday = day.dateString === todayString;
+
+                return (
+                  <tr 
+                    key={day.dateString} 
+                    // Dynamic Tailwind: Blue tint and thick border if it's today!
+                    className={`transition-colors ${isToday ? "bg-blue-50 border-l-4 border-blue-500 shadow-sm" : "hover:bg-gray-50 border-b"}`}
+                  >
+                    {/* Column 1: Date */}
+                    <td className="p-4 border-r">
+                      <div className={`font-bold text-lg ${isToday ? "text-blue-700" : "text-gray-800"}`}>
+                        {day.dayName} {isToday && <span className="text-sm font-normal bg-blue-200 text-blue-800 px-2 py-0.5 rounded ml-2">Today</span>}
+                      </div>
+                      <div className="text-sm text-gray-500">{day.dateString}</div>
+                    </td>
+
+                    {/* Columns 2, 3, 4: Meals */}
+                    {['Breakfast', 'Lunch', 'Dinner'].map((meal) => {
+                     const assignedDishes = getDishesForSlot(day.dateString, meal);
+                      
+                      return (
+                        <td key={meal} className="p-4 border-r align-top">
+                          <div className="flex flex-col gap-2 h-full">
+                            
+                            {/* Render EVERY dish assigned to this slot */}
+                            {assignedDishes.map((dish) => (
+                              <div key={dish.schedule_id} className={`p-2 rounded border text-sm relative group pr-6 ${dish.diet_type === 'Veg' ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200 text-red-800'}`}>
+                                
+                                <span className="font-semibold block">{dish.dish_name}</span>
+                                
+                                <div className="flex items-center gap-2 mt-1">
+                                  <span className="text-xs opacity-75">{dish.diet_type}</span>
+                                  
+                                  {/* THE NEW STATUS BADGE */}
+                                  <span className={`text-[10px] px-1.5 py-0.5 rounded uppercase tracking-wider font-bold ${dish.status === 'Approved' ? 'bg-blue-100 text-blue-700' : 'bg-yellow-200 text-yellow-800'}`}>
+                                    {dish.status || 'Pending'}
+                                  </span>
+                                </div>
+                                
+                                {/* The Delete Button */}
+                                <button 
+                                  onClick={() => handleRemoveDish(dish.schedule_id, dish.dish_name)}
+                                  className="absolute top-1 right-1 w-5 h-5 flex items-center justify-center rounded-full bg-red-100 text-red-600 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500 hover:text-white"
+                                  title="Remove from schedule"
+                                >
+                                  ×
+                                </button>
+                              </div>
+                            ))}
+
+                            {/* Always keep the Assign button visible so they can add a 2nd or 3rd dish */}
+                            <button 
+                              onClick={() => setAssignModalData({ dateString: day.dateString, mealType: meal })}
+                              className={`w-full border-2 border-dashed border-gray-300 rounded text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors flex items-center justify-center ${assignedDishes.length > 0 ? 'py-1 text-xs mt-auto' : 'h-full min-h-[60px]'}`}
+                            >
+                              + {assignedDishes.length > 0 ? 'Add Option' : 'Assign'}
+                            </button>
+                            
+                          </div>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        {/* ========================================= */}
+      {/* MODAL 1: ADD TO CATALOG                   */}
+      {/* ========================================= */}
+      {isCatalogModalOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden">
+            <div className="p-4 border-b bg-gray-50 flex justify-between items-center">
+              <h3 className="font-bold text-lg">Add New Dish to Catalog</h3>
+              <button onClick={() => setIsCatalogModalOpen(false)} className="text-gray-500 hover:text-red-500 font-bold">X</button>
+            </div>
+            
+            <form onSubmit={handleAddDish} className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Dish Name</label>
+                <input type="text" required value={newDish.dish_name} onChange={(e) => setNewDish({...newDish, dish_name: e.target.value})} className="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none" placeholder="e.g. Masala Dosa" />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Diet Type</label>
+                <select value={newDish.diet_type} onChange={(e) => setNewDish({...newDish, diet_type: e.target.value})} className="w-full border p-2 rounded outline-none">
+                  <option value="Veg">Vegetarian</option>
+                  <option value="Non-Veg">Non-Vegetarian</option>
+                </select>
+              </div>
+
+              <div className="flex gap-4">
+                <div className="flex-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Base Cost (₹)</label>
+                  <input type="number" required value={newDish.cost} min="1" onChange={(e) => setNewDish({...newDish, cost: e.target.value})} className="w-full border p-2 rounded outline-none" placeholder="45" />
+                </div>
+                <div className="flex-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Prep Effort (1-10)</label>
+                  <input type="number" min="1" max="10" required value={newDish.effort_score} onChange={(e) => setNewDish({...newDish, effort_score: e.target.value})} className="w-full border p-2 rounded outline-none" placeholder="5" />
+                </div>
+              </div>
+
+              <button type="submit" className="w-full bg-blue-600 text-white font-bold py-2 rounded hover:bg-blue-700 transition mt-4">Save to Catalog</button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================= */}
+      {/* MODAL 2: ASSIGN DISH TO MENU SCHEDULE     */}
+      {/* ========================================= */}
+      {assignModalData && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden">
+            <div className="p-4 border-b bg-gray-50 flex justify-between items-center">
+              <h3 className="font-bold text-lg">Assign to Schedule</h3>
+              <button onClick={() => setAssignModalData(null)} className="text-gray-500 hover:text-red-500 font-bold">X</button>
+            </div>
+            
+            <form onSubmit={handleAssignDish} className="p-6 space-y-4">
+              <div className="bg-blue-50 text-blue-800 p-3 rounded text-sm mb-4 border border-blue-200">
+                Scheduling for: <br/>
+                <strong>{assignModalData.dateString}</strong> ({assignModalData.mealType})
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Select from Catalog</label>
+                <select required value={selectedDishId} onChange={(e) => setSelectedDishId(e.target.value)} className="w-full border p-2 rounded outline-none">
+                  <option value="">-- Choose a Dish --</option>
+                  {catalog.map(dish => (
+                    <option key={dish.id} value={dish.id}>
+                      {dish.dish_name} ({dish.diet_type})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <button type="submit" className="w-full bg-green-600 text-white font-bold py-2 rounded hover:bg-green-700 transition mt-4">Confirm Assignment</button>
+            </form>
+          </div>
+        </div>
+      )}
+      {/* ========================================= */}
+      {/* MODAL 3: EDIT MEAL TIMINGS                */}
+      {/* ========================================= */}
+      {timeEditModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden">
+            <div className="p-4 border-b bg-gray-50 flex justify-between items-center">
+              <h3 className="font-bold text-lg">Edit {timeEditModal.meal} Time</h3>
+              <button onClick={() => setTimeEditModal(null)} className="text-gray-500 hover:text-red-500 font-bold">X</button>
+            </div>
+            
+            <form onSubmit={handleUpdateTiming} className="p-6 space-y-4">
+              <div className="flex gap-4">
+                <div className="flex-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Start Time</label>
+                  <input 
+                    type="time" 
+                    required 
+                    value={timeEditModal.start} 
+                    onChange={(e) => setTimeEditModal({...timeEditModal, start: e.target.value})} 
+                    className="w-full border p-2 rounded outline-none focus:ring-2 focus:ring-blue-500" 
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">End Time</label>
+                  <input 
+                    type="time" 
+                    required 
+                    value={timeEditModal.end} 
+                    onChange={(e) => setTimeEditModal({...timeEditModal, end: e.target.value})} 
+                    className="w-full border p-2 rounded outline-none focus:ring-2 focus:ring-blue-500" 
+                  />
+                </div>
+              </div>
+
+              <button type="submit" className="w-full bg-blue-600 text-white font-bold py-2 rounded hover:bg-blue-700 transition mt-4">
+                Save Changes
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+      <div className="p-4 border-t bg-gray-50 flex justify-between items-center">
+          <p className="text-sm text-gray-500">
+            Click approve to publish this week's menu to the Student App.
+          </p>
+          <button 
+            onClick={handleApproveWeek}
+            className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded shadow transition flex items-center gap-2"
+          >
+            ✓ Approve Week's Menu
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 // Dummy Tabs
 const MessReviewsSkeleton = () => <div className="p-10 text-center text-gray-400 border-2 border-dashed border-gray-200 rounded-2xl">Mess Reviews Interface</div>;
-const MenuSkeleton = () => <div className="p-10 text-center text-gray-400 border-2 border-dashed border-gray-200 rounded-2xl">Menu Management Interface</div>
 
 
 // Main layout
@@ -1092,7 +1501,7 @@ function WardenDashboard() {
       <main className="flex-1 ml-64 p-8">
         {activeTab === 'overnight' && <OvernightLogTab />}
         {activeTab === 'mess' && <MessReviewsSkeleton />}
-        {activeTab === 'menu' && <MenuSkeleton />}
+        {activeTab === 'menu' && <MenuTab />}
         {activeTab === 'home' && <DashboardHome setActiveTab={setActiveTab}/>}
         {activeTab === 'grievances' && <GrievancesTab />}
         {activeTab === 'students' && <StudentMgmtTab />}

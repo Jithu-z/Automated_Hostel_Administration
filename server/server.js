@@ -36,7 +36,8 @@ const db = mysql.createConnection({
     host: 'localhost',
     user: 'root',     
     password: 'OPEN SQL', 
-    database: 'hostel_os'
+    database: 'hostel_os',
+    dateStrings: true
 });
 
 db.connect(err => {
@@ -158,16 +159,86 @@ app.get('/api/student/grievances/:uid', (req, res) => {
     });
 });
 app.put('/api/student/grievances/acknowledge/:id', (req, res) => {
-    const sql = "UPDATE grievances SET is_acknowledged = TRUE WHERE id = ?";
+    const sql = "UPDATE grievances SET is_acknowledged = 1 WHERE id = ?";
     db.query(sql, [req.params.id], (err, result) => {
         if (err) return res.status(500).json(err);
         res.json({ success: true });
     });
 });
 
+//student mess review api's
+// GET: Fetch today's menu for a specific meal AND diet type
+app.get('/api/student/mess/today', (req, res) => {
+    const mealType = req.query.meal; // 'Breakfast', 'Lunch', or 'Dinner'
+    const dietType = req.query.diet; // 'Veg' or 'Non-Veg'
+
+    // Safety check
+    if (!mealType || !dietType) {
+        return res.status(400).json({ error: "Missing meal or diet parameter" });
+    }
+
+    // Join daily_menu with menu_catalog and filter by BOTH meal_type and mc.type (diet)
+    const sql = `
+        SELECT mc.id, mc.dish_name, mc.diet_type 
+        FROM daily_menu dm
+        JOIN menu_catalog mc ON dm.dish_id = mc.id
+        WHERE dm.serve_date = CURDATE() 
+          AND dm.meal_type = ?
+          AND mc.diet_type = ?
+          AND dm.status = 'Approved'
+    `;
+
+    db.query(sql, [mealType, dietType], (err, results) => {
+        if (err) {
+            console.error("Error fetching today's menu:", err);
+            return res.status(500).json({ error: "Database error" });
+        }
+        res.json(results);
+    });
+});
+// POST: Submit a new mess review
+app.post('/api/student/mess/review', (req, res) => {
+    const { uid, meal_type, diet_type, rating, dish_issues, comment } = req.body;
+    const sql = `
+        INSERT INTO mess_reviews 
+        (uid, serve_date, meal_type, diet_type, rating, dish_issues, comment) 
+        VALUES (?, CURDATE(), ?, ?, ?, ?, ?)`;
+    db.query(sql, [uid, meal_type, diet_type, rating, dish_issues, comment], (err, result) => {
+        if (err) {
+            console.error("Error saving mess review:", err.sqlMessage || err);
+            return res.status(500).json({ error: "Failed to save review" });
+        }
+        console.log(`[Mess] Review logged by ${uid} for ${diet_type} ${meal_type}. Rating: ${rating}★`);
+        res.json({ success: true, message: "Review saved successfully", review_id: result.insertId });
+    });
+});
+// GET: Check which meals the student has already reviewed today
+app.get('/api/student/mess/reviewed-today', (req, res) => {
+    const { uid } = req.query;
+    if (!uid) return res.status(400).json({ error: "Missing uid" });
+
+    const sql = `
+        SELECT meal_type 
+        FROM mess_reviews 
+        WHERE uid = ? AND serve_date = CURDATE()
+    `;
+    
+    db.query(sql, [uid], (err, results) => {
+        if (err) {
+            console.error("Error checking reviews:", err);
+            return res.status(500).json({ error: "Database error" });
+        }
+        // Returns a simple array like: ['Breakfast', 'Lunch']
+        const reviewedMeals = results.map(row => row.meal_type);
+        res.json(reviewedMeals);
+    });
+});
 
 
-//Warden Dashboard API's
+// ==========================================
+// WARDEN MENU DASHBOARD APIs
+// ==========================================
+
 
 //Overnight stay Routes
 app.get('/api/warden/dashboard', (req, res) => {
@@ -419,6 +490,177 @@ app.get('/api/warden/home-stats', (req, res) => {
         });
     });
 });
+
+
+// Menu Routes
+// 1. GET: Fetch the entire Menu Catalog
+app.get('/api/admin/menu-catalog', (req, res) => {
+    const sql = "SELECT * FROM menu_catalog ORDER BY diet_type, dish_name";
+    
+    db.query(sql, (err, results) => {
+        if (err) {
+            console.error("Error fetching catalog:", err);
+            return res.status(500).json({ error: "Database error" });
+        }
+        res.json(results);
+    });
+});
+
+// 2. POST: Add a brand new dish to the Menu Catalog
+app.post('/api/admin/menu-catalog', (req, res) => {
+    const { dish_name, diet_type, cost, effort_score } = req.body;
+    const sql = "INSERT INTO menu_catalog (dish_name, diet_type, cost, effort_score) VALUES (?, ?, ?, ?)";
+    
+    db.query(sql, [dish_name, diet_type, cost, effort_score], (err, result) => {
+        if (err) {
+            console.error("Error adding dish:", err);
+            return res.status(500).json({ error: "Failed to add dish" });
+        }
+        res.json({ success: true, message: "Dish added to catalog!", id: result.insertId });
+    });
+});
+
+// 3. GET: Fetch the planned menu for a specific date
+app.get('/api/admin/daily-menu/:date', (req, res) => {
+    const serveDate = req.params.date; // Format: YYYY-MM-DD
+    
+    const sql = `
+        SELECT d.id, d.meal_type, m.dish_name, m.diet_type 
+        FROM daily_menu d
+        JOIN menu_catalog m ON d.dish_id = m.id
+        WHERE d.serve_date = ?
+    `;
+    
+    db.query(sql, [serveDate], (err, results) => {
+        if (err) {
+            console.error("Error fetching daily menu:", err);
+            return res.status(500).json({ error: "Database error" });
+        }
+        res.json(results);
+    });
+});
+
+// 4. POST: Assign a dish from the catalog to a specific meal schedule
+app.post('/api/admin/daily-menu', (req, res) => {
+    const { serve_date, meal_type, dish_id } = req.body;
+    const sql = "INSERT INTO daily_menu (serve_date, meal_type, dish_id) VALUES (?, ?, ?)";
+    
+    db.query(sql, [serve_date, meal_type, dish_id], (err, result) => {
+        if (err) {
+            console.error("Error scheduling dish:", err);
+            return res.status(500).json({ error: "Failed to schedule dish" });
+        }
+        res.json({ success: true, message: "Dish scheduled successfully!" });
+    });
+});
+
+// 5. GET: Fetch the planned menu for a specific date range (e.g., a full week)
+app.get('/api/admin/weekly-menu', (req, res) => {
+    // We expect the frontend to pass these as query parameters
+    // Example: /api/admin/weekly-menu?start=2026-03-02&end=2026-03-08
+    const startDate = req.query.start;
+    const endDate = req.query.end;
+
+    if (!startDate || !endDate) {
+        return res.status(400).json({ error: "Please provide both start and end dates." });
+    }
+
+    // The SQL Query
+    // - We use BETWEEN to grab the whole week in one go.
+    // - We use FIELD() to ensure the database returns the meals in chronological order,
+    //   making it infinitely easier for your React frontend to map them into the grid.
+    const sql = `
+        SELECT 
+            d.id as schedule_id, 
+            d.serve_date, 
+            d.meal_type, 
+            d.dish_id,
+            d.status, 
+            m.dish_name, 
+            m.diet_type 
+        FROM daily_menu d
+        JOIN menu_catalog m ON d.dish_id = m.id
+        WHERE d.serve_date BETWEEN ? AND ?
+        ORDER BY 
+            d.serve_date ASC, 
+            FIELD(d.meal_type, 'Breakfast', 'Lunch', 'Dinner')
+    `;
+
+    db.query(sql, [startDate, endDate], (err, results) => {
+        if (err) {
+            console.error("Error fetching weekly menu:", err);
+            return res.status(500).json({ error: "Database error" });
+        }
+        res.json(results);
+    });
+});
+
+// 5. DELETE: Remove a scheduled dish from the daily menu
+app.delete('/api/admin/daily-menu/:id', (req, res) => {
+    const scheduleId = req.params.id; // This is the unique ID of the scheduled slot, not the dish catalog ID
+    const sql = "DELETE FROM daily_menu WHERE id = ?";
+    
+    db.query(sql, [scheduleId], (err, result) => {
+        if (err) {
+            console.error("Error deleting scheduled dish:", err);
+            return res.status(500).json({ error: "Failed to delete dish" });
+        }
+        res.json({ success: true, message: "Dish removed from schedule!" });
+    });
+});
+
+// 6. GET: Fetch all meal timings
+app.get('/api/admin/meal-timings', (req, res) => {
+    const sql = "SELECT * FROM meal_timings";
+    db.query(sql, (err, results) => {
+        if (err) {
+            console.error("Error fetching timings:", err);
+            return res.status(500).json({ error: "Database error" });
+        }
+        
+        // Convert the MySQL array into a clean object for React
+        // MySQL sends 'HH:MM:SS', we slice it to 'HH:MM' for the HTML time inputs
+        const timingsObj = {};
+        results.forEach(row => {
+            timingsObj[row.meal_type] = {
+                start: row.start_time.substring(0, 5), 
+                end: row.end_time.substring(0, 5)
+            };
+        });
+        res.json(timingsObj);
+    });
+});
+
+// 7. PUT: Update a specific meal timing
+app.put('/api/admin/meal-timings', (req, res) => {
+    const { meal_type, start_time, end_time } = req.body;
+    const sql = "UPDATE meal_timings SET start_time = ?, end_time = ? WHERE meal_type = ?";
+    
+    db.query(sql, [start_time, end_time, meal_type], (err, result) => {
+        if (err) {
+            console.error("Error updating timing:", err);
+            return res.status(500).json({ error: "Failed to update timing" });
+        }
+        res.json({ success: true, message: "Timing updated successfully!" });
+    });
+});
+
+// 8. PUT: Approve the menu for a specific date range
+app.put('/api/admin/daily-menu/approve', (req, res) => {
+    const { start_date, end_date } = req.body;
+    
+    // Updates all meals in this week to 'Approved'
+    const sql = "UPDATE daily_menu SET status = 'Approved' WHERE serve_date BETWEEN ? AND ?";
+    
+    db.query(sql, [start_date, end_date], (err, result) => {
+        if (err) {
+            console.error("Error approving menu:", err);
+            return res.status(500).json({ error: "Failed to approve menu" });
+        }
+        res.json({ success: true, message: "Weekly menu approved successfully!" });
+    });
+});
+
 app.listen(3001, () => {
     console.log('Server running on port 3001');
 });
