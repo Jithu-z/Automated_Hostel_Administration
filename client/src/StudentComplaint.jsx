@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { 
-  AlertCircle, CheckCircle, Send, Home, PenTool, Clock, Plus, ArrowLeft, X, History, Upload, FileVideo 
+  AlertCircle, CheckCircle, Send, Home, PenTool, Clock, Plus, ArrowLeft, X, History, Upload, FileVideo, Lock, Map
 } from 'lucide-react';
 
 function StudentComplaint() {
   const [view, setView] = useState('loading'); // 'loading', 'list', 'form'
   const [complaints, setComplaints] = useState([]);
+  const [hostelStatus, setHostelStatus] = useState('in');
 
   // File Upload State
   const [selectedFile, setSelectedFile] = useState(null);
@@ -28,11 +29,13 @@ function StudentComplaint() {
 
 
   useEffect(() => {
+    setView('loading');
+    checkStatus();
     fetchHistory();
   }, []);
 
   const fetchHistory = () => {
-    axios.get(`http://10.42.108.171:3001/api/student/grievances/${uid}`)
+    axios.get(`http://10.0.8.126:3001/api/student/grievances/${uid}`)
       .then(res => {
         setComplaints(res.data);
         if (res.data.length === 0) setView('form');
@@ -51,7 +54,7 @@ function StudentComplaint() {
     setComplaints(updated);
 
     try {
-      await axios.put(`http://10.42.108.171:3001/api/student/grievances/acknowledge/${id}`);
+      await axios.put(`http://10.0.8.126:3001/api/student/grievances/acknowledge/${id}`);
     } catch (err) {
       console.error("Failed to acknowledge");
     }
@@ -103,7 +106,7 @@ function StudentComplaint() {
     }
 
     try {
-      await axios.post('http://10.42.108.171:3001/api/student/grievances', data);
+      await axios.post('http://10.0.8.126:3001/api/student/grievances', data);
       setStatus('success');
       setFormData({ category: 'Electrical', room_no: user.room_no?user.room_no:'', description: '' });
       clearFile();
@@ -138,8 +141,38 @@ function StudentComplaint() {
     }
   };
 
+  const checkStatus = async () => {
+      try {
+        // Hitting your existing gatepass API!
+        const res = await axios.get(`http://10.0.8.126:3001/api/gate/status/${uid}`);
+        setHostelStatus(res.data.status); // Will be 'in' or 'out'
+      } catch (err) {
+        console.error("Failed to fetch campus status", err);
+      }
+    };
+
   if (view === 'loading') return <div className="p-10 text-center text-gray-400">Loading...</div>;
 
+  if (hostelStatus === 'out') {
+      return (
+        <div className="flex flex-col items-center justify-center min-h-[60vh] text-center animate-fade-in px-4">
+          <div className="bg-orange-50 text-orange-500 p-6 rounded-full mb-6 relative">
+            <Map size={48} />
+            <div className="absolute -bottom-2 -right-2 bg-white rounded-full p-1.5 shadow-sm border border-gray-100">
+              <Lock size={20} className="text-gray-700" />
+            </div>
+          </div>
+          <h2 className="text-3xl font-bold text-gray-800 mb-3">You are currently away!</h2>
+          <p className="text-gray-500 max-w-md mx-auto leading-relaxed mb-8">
+            Mess reviews and complaints are paused while you are checked out of the hostel. Enjoy your time away, and we'll see you when you get back!
+          </p>
+          <div className="bg-white border border-gray-200 px-6 py-3 rounded-xl shadow-sm text-sm font-bold text-gray-600 flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse"></span>
+            Status: Checked Out
+          </div>
+        </div>
+      );
+    }
   // --- LIST VIEW ---
   if (view === 'list') {
     return (
@@ -217,7 +250,7 @@ function StudentComplaint() {
                           {c.img_url.endsWith('.mp4') || c.img_url.endsWith('.webm') ? (
                              <FileVideo className="text-gray-400" />
                           ) : (
-                             <img src={`http://10.42.108.171:3001${c.img_url}`} alt="proof" className="w-full h-full object-cover" />
+                             <img src={`http://10.0.8.126:3001${c.img_url}`} alt="proof" className="w-full h-full object-cover" />
                           )}
                        </div>
                     </div>

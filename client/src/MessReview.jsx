@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Star, Utensils, Send, CheckCircle, Sunrise, Sun, Moon, Clock, Leaf, Drumstick, AlertCircle } from 'lucide-react';
+import { Star, Utensils, Send, CheckCircle, Sunrise, Sun, Moon, Clock, Leaf, Drumstick, AlertCircle, Map, Lock } from 'lucide-react';
 
 const MessReview = () => {
   const user = JSON.parse(localStorage.getItem('user'));
   const uid = user ? user.uid : 'Unknown';
   const [loading, setLoading] = useState(false);
+  const [hostelStatus, setHostelStatus] = useState('in'); // Default to 'in'
   const [reviewedMeals, setReviewedMeals] = useState([]);
   
   const [dietType, setDietType] = useState('Non-Veg'); 
@@ -45,9 +46,24 @@ const MessReview = () => {
     
     setNewCustomTag(''); // Clear the input box
   };
+
+  const checkStatus = async () => {
+      try {
+        // Hitting your existing gatepass API!
+        const res = await axios.get(`http://10.0.8.126:3001/api/gate/status/${uid}`);
+        setHostelStatus(res.data.status); // Will be 'in' or 'out'
+      } catch (err) {
+        console.error("Failed to fetch campus status", err);
+      }
+    };
+
   useEffect(() => {
+    setLoading(true);
+    checkStatus();
     fetchReviewedStatus();
     fetchMealTimings();
+    setLoading(false);
+    
   }, [uid]);
 
   // Fetch the full day's menu whenever the component loads or the diet toggle changes
@@ -55,9 +71,9 @@ const MessReview = () => {
     const fetchFullDayMenu = async () => {
       try {
         const [bfastRes, lunchRes, dinnerRes] = await Promise.all([
-          axios.get(`http://10.42.108.171:3001/api/student/mess/today?meal=Breakfast&diet=${dietType}`),
-          axios.get(`http://10.42.108.171:3001/api/student/mess/today?meal=Lunch&diet=${dietType}`),
-          axios.get(`http://10.42.108.171:3001/api/student/mess/today?meal=Dinner&diet=${dietType}`)
+          axios.get(`http://10.0.8.126:3001/api/student/mess/today?meal=Breakfast&diet=${dietType}`),
+          axios.get(`http://10.0.8.126:3001/api/student/mess/today?meal=Lunch&diet=${dietType}`),
+          axios.get(`http://10.0.8.126:3001/api/student/mess/today?meal=Dinner&diet=${dietType}`)
         ]);
         
         setDayMenu({
@@ -74,13 +90,13 @@ const MessReview = () => {
   }, [dietType]); // The magic array: re-runs automatically when they click Veg/Non-Veg!
 
   const fetchReviewedStatus = () => {
-    axios.get(`http://10.42.108.171:3001/api/student/mess/reviewed-today?uid=${uid}`)
+    axios.get(`http://10.0.8.126:3001/api/student/mess/reviewed-today?uid=${uid}`)
       .then(res => setReviewedMeals(res.data))
       .catch(err => console.error("Failed to fetch reviewed status", err));
   };
   const fetchMealTimings = () => {
     // We can use the route we already built for the Warden!
-    axios.get('http://10.42.108.171:3001/api/admin/meal-timings')
+    axios.get('http://10.0.8.126:3001/api/admin/meal-timings')
       .then(res => {
         const timings = res.data;
         const dynamicSchedule = {};
@@ -146,7 +162,7 @@ const MessReview = () => {
     };
 
     try {
-      await axios.post('http://10.42.108.171:3001/api/student/mess/review', payload);
+      await axios.post('http://10.0.8.126:3001/api/student/mess/review', payload);
       setReviewedMeals(prev => [...prev, activeMeal]);
       resetForm();
       alert("Review submitted successfully! Thank you.");
@@ -200,6 +216,32 @@ const MessReview = () => {
     { name: 'Dinner', icon: <Moon size={32} /> }
   ];
 
+  if (loading) {
+      return <div className="flex justify-center items-center h-64 text-gray-500 font-medium animate-pulse">Checking campus status...</div>;
+    }
+
+  // --- THE LOCK SCREEN ---
+  if (hostelStatus === 'out') {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] text-center animate-fade-in px-4">
+        <div className="bg-orange-50 text-orange-500 p-6 rounded-full mb-6 relative">
+          <Map size={48} />
+          <div className="absolute -bottom-2 -right-2 bg-white rounded-full p-1.5 shadow-sm border border-gray-100">
+            <Lock size={20} className="text-gray-700" />
+          </div>
+        </div>
+        <h2 className="text-3xl font-bold text-gray-800 mb-3">You are currently away!</h2>
+        <p className="text-gray-500 max-w-md mx-auto leading-relaxed mb-8">
+          Mess reviews and complaints are paused while you are checked out of the hostel. Enjoy your time away, and we'll see you when you get back!
+        </p>
+        <div className="bg-white border border-gray-200 px-6 py-3 rounded-xl shadow-sm text-sm font-bold text-gray-600 flex items-center gap-2">
+          <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse"></span>
+          Status: Checked Out
+        </div>
+      </div>
+    );
+  }
+  
   return (
     <div className="animate-fade-in max-w-4xl mx-auto space-y-8">
       
