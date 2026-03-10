@@ -57,7 +57,10 @@ cron.schedule('0 2 * * *', () => {
             COALESCE(AVG(mr.rating), 0) AS real_avg
         FROM menu_catalog mc
         LEFT JOIN daily_menu dm ON mc.id = dm.dish_id
-        LEFT JOIN mess_reviews mr ON dm.id = mr.schedule_id
+        LEFT JOIN mess_reviews mr 
+            ON dm.serve_date = mr.serve_date 
+            AND dm.meal_type = mr.meal_type
+            AND (mc.diet_type = mr.diet_type OR mc.diet_type = 'Common')
         GROUP BY mc.id
     `;
 
@@ -382,32 +385,33 @@ app.get('/api/student/mess/reviewed-today', (req, res) => {
 
 
 //Overnight stay Routes
-app.get('/api/warden/dashboard', (req, res) => {
-    const countSql = 'SELECT COUNT(*) as out_count FROM users WHERE is_present = 0';
+app.get('/api/warden/overnightlog', async (req, res) => {
+    try {
+        // Run all three queries in parallel
+        const [outResult, totalResult, logsResult] = await Promise.all([
+            db.promise().query("SELECT COUNT(*) as out_count FROM users WHERE role = 'student' AND is_present = 0"),
+            db.promise().query("SELECT COUNT(*) as total_count FROM users WHERE role = 'student'"),
+            db.promise().query(`
+                SELECT gate_logs.*, users.full_name, users.uid 
+                FROM gate_logs 
+                JOIN users ON gate_logs.uid = users.uid 
+                ORDER BY exit_time DESC 
+                LIMIT 10
+            `)
+        ]);
 
-    const logsSql = `
-        SELECT gate_logs.*, users.full_name, users.uid 
-        FROM gate_logs 
-        JOIN users ON gate_logs.uid = users.uid 
-        ORDER BY exit_time DESC 
-        LIMIT 10
-    `;
-
-    db.query(countSql, (err, countResult) => {
-        if (err) return res.status(500).json(err);
-        
-        db.query(logsSql, (err, logsResult) => {
-            if (err) return res.status(500).json(err);
-            
-            res.json({
-                stats: {
-                    out_now: countResult[0].out_count,
-                    total_students: 50 // Hardcoded for now,query count(*) from users
-                },
-                recent_logs: logsResult
-            });
+        res.json({
+            stats: {
+                out_now: outResult[0][0].out_count,
+                total_students: totalResult[0][0].total_count
+            },
+            recent_logs: logsResult[0] // Returns the array of log rows
         });
-    });
+
+    } catch (err) {
+        console.error("❌ Overnight Log Fetch Error:", err);
+        res.status(500).json({ error: "Failed to fetch overnight logs" });
+    }
 });
 
 //Reset System 
@@ -586,63 +590,96 @@ app.put('/api/warden/students/:uid', (req, res) => {
 
 //DashboardHome Routes
 
-app.get('/api/warden/home-stats', (req, res) => {
-    const stats = {};
+// app.get('/api/warden/home-stats', (req, res) => {
+//     const stats = {};
 
-    const q1 = "SELECT COUNT(*) as count FROM users";
+//     const q1 = "SELECT COUNT(*) as count FROM users";
     
-    const q2 = "SELECT COUNT(*) as count FROM grievances WHERE status != 'Resolved'";
-    const q3 = `
-        SELECT COUNT(*) as count FROM (
-            SELECT uid, 
-                   SUBSTRING_INDEX(GROUP_CONCAT(status ORDER BY exit_time DESC), ',', 1) as last_action
-            FROM gate_logs 
-            GROUP BY uid
-        ) as status_table 
-        WHERE last_action = 'out'
-    `;
+//     const q2 = "SELECT COUNT(*) as count FROM grievances WHERE status != 'Resolved'";
+//     const q3 = `
+//         SELECT COUNT(*) as count FROM (
+//             SELECT uid, 
+//                    SUBSTRING_INDEX(GROUP_CONCAT(status ORDER BY exit_time DESC), ',', 1) as last_action
+//             FROM gate_logs 
+//             GROUP BY uid
+//         ) as status_table 
+//         WHERE last_action = 'out'
+//     `;
 
-    db.query(q1, (err, r1) => {
-        if(err) {
-            console.error("Stats Error (Users):", err);
-            return res.status(500).json(err);
-        }
-        stats.total_students = r1[0].count;
+//     db.query(q1, (err, r1) => {
+//         if(err) {
+//             console.error("Stats Error (Users):", err);
+//             return res.status(500).json(err);
+//         }
+//         stats.total_students = r1[0].count;
 
-        db.query(q2, (err, r2) => {
-            if(err) {
-                console.error("Stats Error (Grievances):", err);
-                return res.status(500).json(err);
-            }
-            stats.pending_grievances = r2[0].count;
+//         db.query(q2, (err, r2) => {
+//             if(err) {
+//                 console.error("Stats Error (Grievances):", err);
+//                 return res.status(500).json(err);
+//             }
+//             stats.pending_grievances = r2[0].count;
 
-            db.query(q3, (err, r3) => {
-                if(err) {
-                    console.error("Stats Error (Gate):", err);
-                    return res.status(500).json(err);
-                }
-                stats.students_out = r3[0].count;
+//             db.query(q3, (err, r3) => {
+//                 if(err) {
+//                     console.error("Stats Error (Gate):", err);
+//                     return res.status(500).json(err);
+//                 }
+//                 stats.students_out = r3[0].count;
                 
-                // Final Response
-                // Note: 'mess_rating' and 'top_complaint' are handled by Frontend defaults 
-                // until the AI module is ready, sending the hard numbers here.
-                res.json(stats);
-            });
+//                 // Final Response
+//                 // Note: 'mess_rating' and 'top_complaint' are handled by Frontend defaults 
+//                 // until the AI module is ready, sending the hard numbers here.
+//                 res.json(stats);
+//             });
+//         });
+//     });
+// });
+// LIVE HOME STATS
+app.get('/api/warden/home-stats', async (req, res) => {
+    try {
+        // Run all 4 queries in parallel for maximum speed
+        const [outResult, grievanceResult, totalStudents, messResult] = await Promise.all([
+            db.promise().query("SELECT COUNT(*) as count FROM users WHERE role = 'student' AND is_present = 0"),
+            // Assuming your grievances table has a status column. Adjust if yours is named differently!
+            db.promise().query("SELECT COUNT(*) as count FROM grievances WHERE status = 'Pending'"),
+            db.promise().query("SELECT COUNT(*) as count FROM users WHERE role = 'student'"),
+            db.promise().query("SELECT COALESCE(AVG(rating), 0) as avg_rating FROM mess_reviews WHERE serve_date = CURDATE()")
+        ]);
+
+        res.json({
+            students_out: outResult[0][0].count,
+            pending_grievances: grievanceResult[0][0].count,
+            total_students: totalStudents[0][0].count,
+            mess_rating: Number(messResult[0][0].avg_rating).toFixed(1)
         });
-    });
+    } catch (err) {
+        console.error("❌ Home Stats Error:", err);
+        res.status(500).json({ error: "Failed to fetch live stats" });
+    }
 });
 
 
 // Menu Routes
 // 1. GET: Fetch the entire Menu Catalog
 app.get('/api/admin/menu-catalog', (req, res) => {
-    const sql = "SELECT * FROM menu_catalog ORDER BY dish_name,diet_type";
+    const sql = `
+        SELECT 
+            mc.id, 
+            mc.dish_name, 
+            mc.diet_type, 
+            mc.cost, 
+            mc.effort_score, 
+            mc.popularity_score,
+            GROUP_CONCAT(DISTINCT dm.meal_type) as served_meals
+        FROM menu_catalog mc
+        LEFT JOIN daily_menu dm ON mc.id = dm.dish_id
+        GROUP BY mc.id
+        ORDER BY mc.diet_type ASC, mc.dish_name ASC
+    `;
     
     db.query(sql, (err, results) => {
-        if (err) {
-            console.error("Error fetching catalog:", err);
-            return res.status(500).json({ error: "Database error" });
-        }
+        if (err) return res.status(500).json({ error: err.message });
         res.json(results);
     });
 });
@@ -893,6 +930,10 @@ const [catalog] = await db.promise().query("SELECT id, dish_name, diet_type, cos
     }
 });
 
+
+
+
+
 // WARDEN MESS REVIEWS API
 // GET: Fetch all student mess reviews for the Analytics Dashboard
 app.get('/api/admin/mess-reviews', (req, res) => {
@@ -954,7 +995,6 @@ app.post('/api/admin/generate-insights', async (req, res) => {
 
 
 
-// 🛠️ TEMPORARY ROUTE TO FORCE BAYESIAN CALCULATION 🛠️
 // 🛠️ TEMPORARY ROUTE TO FORCE BAYESIAN CALCULATION 🛠️
 app.get('/api/admin/force-popularity-sync', (req, res) => {
     console.log("🧮 Running Manual Nightly Bayesian Popularity Calculation...");
