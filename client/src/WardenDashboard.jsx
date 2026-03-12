@@ -1,14 +1,15 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import axios from 'axios';
 import { 
   Home,Star,Clock,RefreshCw,Trash2,Search, CheckCircle, ClipboardList, Utensils, Moon, AlertCircle, Users, Settings, LogOut, 
   Filter, ListFilter, X, FileVideo, Phone, Calendar, Shield, Edit2, Save, ChevronRight,TrendingDown, AlertOctagon, MessageSquare, Plus, Sparkles, BrainCircuit, Image as ImageIcon,
-  TrendingUp, ThumbsUp, ThumbsDown, Zap
+  TrendingUp, ThumbsUp, ThumbsDown, Zap, Upload, AlertTriangle, ChevronDown, UserCheck, GraduationCap, Download, HelpCircle
 } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 // --- SUB-COMPONENTS  ---
 
-const OvernightLogTab= () => {
+const OvernightLogTab = () => {
   const [stats, setStats] = useState({ out_now: 0, total_students: 50 });
   const [recentLogs, setRecentLogs] = useState([]);
   const [outStudents, setOutStudents] = useState([]);
@@ -17,6 +18,9 @@ const OvernightLogTab= () => {
   const [absentSearch, setAbsentSearch] = useState('');
   const [gateSearch, setGateSearch] = useState('');
   const [gateFilter, setGateFilter] = useState('All');
+  const [gateDate, setGateDate] = useState(''); // Empty string means "All Time"
+  const [isLocked, setIsLocked] = useState(false);
+
   // Initial Data Fetch (Only for Home Tab)
   useEffect(() => {
     fetchOvernightLogData();
@@ -25,16 +29,39 @@ const OvernightLogTab= () => {
   }, []);
 
   const fetchOvernightLogData = () => {
-    // Replace IP with your backend IP
     setLoading(true);
     axios.get('http://localhost:3001/api/warden/overnightlog') 
       .then(res => {
         setStats(res.data.stats);
         setRecentLogs(res.data.recent_logs);
       })
-      .catch(err => console.error("Dashboard fetch error", err))
-      .finally(setLoading(false));
+      .catch(err => console.error("Dashboard fetch error", err)) // We leave this as console.error so it doesn't spam toasts every 5 seconds if the Wi-Fi drops!
+      .finally(() => setLoading(false));
   };
+
+  // 1. The actual database call (Runs ONLY if they click Confirm)
+  const executeCheckin = async (uid) => {
+    setLoading(true);
+    try {
+      const res = await axios.post("http://localhost:3001/api/warden/checkinOverride", {
+        student_id: uid,
+        action: 'returned',
+        reason: 'Returned via Overridden check-in',
+        destination: 'Hostel',
+      });
+      
+      if (res.data.success) {
+          setOutStudents(prev => prev.filter(student => student.uid !== uid));
+          fetchOvernightLogData();
+          toast.success(`Student forcefully checked in!`); 
+      }
+    } catch (err) {
+      console.error("Server Error:", err.response?.data);
+      toast.error(err.response?.data?.error || "System Error during check-in"); 
+    } finally {
+      setLoading(false);
+    }
+  }
 
   const handleOutClick = async () => {
     try {
@@ -42,230 +69,405 @@ const OvernightLogTab= () => {
       setOutStudents(res.data);
       setShowOutModal(true);
     } catch (err) {
-      alert("Failed to fetch data");
+      toast.error("Failed to fetch student data."); // ✨ Upgraded
     }
   };
   
-  const handleReset = async () => {
-    if (!window.confirm(" ARE YOU SURE? This will delete ALL logs and mark everyone as Present.")) {
-      return;
-    }
-
-    try {
-      await axios.post('http://localhost:3001/api/warden/reset');
-      alert("System Reset Successfully!");
-      fetchOvernightLogData(); 
-    } catch (err) {
-      alert("Failed to reset system");
-    }
+  // --- FACTORY RESET LOGIC ---
+  const executeReset = async () => {
+    toast.promise(
+      axios.post('http://localhost:3001/api/warden/reset'),
+      {
+        loading: 'Wiping system logs...',
+        success: 'System Reset Successfully!',
+        error: 'Failed to reset system.',
+      }
+    ).then(() => fetchOvernightLogData());
   };
 
-  const checkinOverride = async (uid) =>{
-      if (!window.confirm(`Confirm Override check-in for uid ${uid}?`)) {
-        return;
-      }
-      setLoading(true);
-      try{
-        const res= await axios.post("http://localhost:3001/api/warden/checkinOverride",{
-          student_id: uid,
-          action: 'returned',
-          reason: 'Returned via Overridden check-in',
-          destination: 'Hostel',
-        })
-        if (res.data.success) {
-            setOutStudents(prev => prev.filter(student => student.uid !== uid));
-            fetchOvernightLogData();
-      }
-      }catch (err) {
-       if (err) {
-         console.error("Server Error:", err.response.data);
-         alert(`System Error: ${JSON.stringify(err.response.data)}`);
-      }
-    } finally {
-      setLoading(false);
-    }
+  const handleReset = () => {
+    setIsLocked(true);
+    toast((t) => (
+      <div className="flex flex-col gap-3 min-w-[280px]">
+        <div className="flex items-start gap-2 text-red-600">
+          <AlertTriangle size={24} className="shrink-0" />
+          <div>
+            <p className="font-bold text-sm">Factory Reset System?</p>
+            <p className="text-sm text-gray-500 mt-1">
+              This will permanently delete ALL exit logs and mark every student as Present. This cannot be undone.
+            </p>
+          </div>
+        </div>
+        <div className="flex gap-2 justify-end mt-2">
+          <button 
+            onClick={() => { toast.dismiss(t.id); setIsLocked(false); }} 
+            className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-sm font-bold hover:bg-gray-200 transition"
+          >
+            Cancel
+          </button>
+          <button 
+            onClick={() => { toast.dismiss(t.id); executeReset(); setIsLocked(false); }} 
+            className="px-3 py-1.5 bg-red-600 text-white rounded-lg text-sm font-bold hover:bg-red-700 transition shadow-sm"
+          >
+            Wipe Everything
+          </button>
+        </div>
+      </div>
+    ), { id: 'factory-reset', duration: Infinity });
+  };
+
+  // 2. The Custom Confirmation UI
+  const checkinOverride = (uid) => {
+    // We pass 't' (the toast object) so we can dismiss this specific popup when a button is clicked
+    setIsLocked(true);
+    toast((t) => (
+      <div className="flex flex-col gap-3 min-w-[250px]">
+        <div className="flex items-center gap-2 text-gray-800">
+          <AlertTriangle size={18} className="text-orange-500" />
+          <p className="font-bold text-sm">Force check-in for {uid}?</p>
+        </div>
+        <div className="flex gap-2 justify-end mt-1">
+          <button
+            onClick={() => {toast.dismiss(t.id);setIsLocked(false);}}
+            className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-sm font-bold hover:bg-gray-200 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => {
+              toast.dismiss(t.id); // Hide the popup
+              executeCheckin(uid);
+              setIsLocked(false); 
+            }}
+            className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm font-bold hover:bg-green-700 transition-colors shadow-sm"
+          >
+            Confirm
+          </button>
+        </div>
+      </div>
+    ), { 
+      duration: Infinity, // Keeps it open until they click a button
+      id: `confirm-${uid}` // Prevents them from spam-clicking and opening 5 popups
+    });
   }
 
   // FILTER OUT STUDENTS
   const filteredOutStudents = outStudents.filter(s => {
       const term = absentSearch.toLowerCase();
-      // Search by Name OR UID
-      return s.full_name.toLowerCase().includes(term) || s.uid.toLowerCase().includes(term);
+      return (
+        (s.full_name || '').toLowerCase().includes(term) || 
+        (s.uid || '').toLowerCase().includes(term) ||
+        (s.room_no || '').toLowerCase().includes(term) ||
+        (s.branch || '').toLowerCase().includes(term) || // ✨ NEW: Search by Branch
+        (s.batch || '').toLowerCase().includes(term)     // ✨ NEW: Search by Batch
+      );
   });
 
   // FILTER GATE LOGS 
   const filteredRecentLogs = recentLogs.filter(log => {
       const term = gateSearch.toLowerCase();
-      
-      // 1. Search Text (Name or UID)
-      const matchText = log.full_name.toLowerCase().includes(term) || log.uid.toLowerCase().includes(term);
-
-      // 2. Dropdown Filter (Status/Type)
+      const matchText = (log.full_name || '').toLowerCase().includes(term) || 
+                        (log.uid || '').toLowerCase().includes(term) ||
+                        (log.room_no || '').toLowerCase().includes(term) || // ✨ NEW
+                        (log.branch || '').toLowerCase().includes(term) ||  // ✨ NEW
+                        (log.batch || '').toLowerCase().includes(term);     // ✨ NEW
+                        
       const matchFilter = gateFilter === 'All' 
         ? true 
         : (gateFilter === 'Checked Out' ? log.status === 'out' : log.status === 'returned');
+      const logDateString = new Date(log.exit_time).toISOString().split('T')[0];
+      const matchDate = gateDate === '' ? true : logDateString === gateDate;
 
-      return matchText && matchFilter;
+      return matchText && matchFilter && matchDate;
   });
-  
+
   return (
   <div className="animate-fade-in">
-    <h1 className="text-2xl font-bold text-gray-800 mb-6">Overnight Logs</h1>
-    
-    {/* Stats Grid */}
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-      <div 
-        onClick={handleOutClick} 
-        className="bg-red-50 p-6 rounded-2xl border border-red-100 cursor-pointer hover:shadow-lg transition-all"
-      >
-        <div className="flex justify-between items-start">
-          <div>
-            <p className="text-gray-500 font-medium mb-1">Students Out</p>
-            <h3 className="text-4xl font-bold text-red-600">{stats.out_now}</h3>
-          </div>
-          <div className="p-3 bg-red-100 rounded-xl text-red-600"><LogOut size={24}/></div>
-        </div>
-        <p className="text-xs text-red-400 mt-4 font-medium">Click to view list &rarr;</p>
+    {isLocked && (
+        <div className="fixed inset-0 z-[40] bg-black/10 backdrop-blur-[2px] cursor-not-allowed" />
+      )}
+    {/* --- HEADER & GLOBAL ACTIONS --- */}
+    <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+      <div>
+        <h1 className="text-2xl font-bold text-gray-800">Overnight Logs</h1>
+        <p className="text-sm text-gray-500 mt-1">Monitor live campus exits and entries.</p>
       </div>
-
-      <div className="bg-blue-50 p-6 rounded-2xl border border-blue-100">
-        <div className="flex justify-between items-start">
-          <div>
-            <p className="text-gray-500 font-medium mb-1">Total Students</p>
-            <h3 className="text-4xl font-bold text-blue-600">{stats.total_students}</h3>
-          </div>
-          <div className="p-3 bg-blue-100 rounded-xl text-blue-600"><Users size={24}/></div>
-        </div>
-      </div>
-
-      <div className="flex gap-3 m-10 mb-10">
+      <div className="flex items-center gap-3 w-full md:w-auto">
         <button 
           onClick={handleReset}
-          className="px-4 py-2 bg-red-100 text-red-600 font-bold rounded-xl hover:bg-red-200 transition text-sm"
+          className="flex-1 md:flex-none px-4 py-2.5 bg-red-50 text-red-600 font-bold border border-red-200 rounded-xl hover:bg-red-100 hover:border-red-300 transition text-sm flex items-center justify-center gap-2 active:scale-95"
         >
-          Reset Log
+          <AlertTriangle size={16} /> Factory Reset
         </button>
-        <button onClick={fetchOvernightLogData} className="p-2 bg-white rounded-full shadow-sm hover:shadow-md transition">
-          <RefreshCw size={20} className={`text-blue-600 ${loading ? 'animate-spin' : ''}`} />
+        <button 
+          onClick={fetchOvernightLogData} 
+          className="p-2.5 bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md transition active:scale-95"
+          title="Refresh Data"
+        >
+          <RefreshCw size={18} className={`text-blue-600 ${loading ? 'animate-spin' : ''}`} />
         </button>
       </div>
     </div>
+    
+    {/* --- STATS GRID --- */}
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+      
+      {/* Students Out Card (Clickable) */}
+      <div 
+        onClick={handleOutClick} 
+        className="bg-red-50 p-6 rounded-2xl border border-red-100 cursor-pointer hover:shadow-md hover:border-red-300 transition-all group relative overflow-hidden"
+      >
+        <div className="absolute top-0 right-0 w-32 h-32 bg-red-100 rounded-bl-full opacity-50 -z-10 group-hover:scale-110 transition-transform"></div>
+        <div className="flex justify-between items-start z-10">
+          <div>
+            <p className="text-sm font-bold text-red-400 uppercase tracking-wider mb-1">Currently Out</p>
+            <h3 className="text-4xl font-black text-red-700">{stats.out_now}</h3>
+          </div>
+          <div className="p-3 bg-red-200/50 rounded-xl text-red-600"><LogOut size={24}/></div>
+        </div>
+        <div className="mt-4 flex items-center text-sm font-bold text-red-600 gap-1 group-hover:translate-x-1 transition-transform">
+          View Absent List <span>&rarr;</span>
+        </div>
+      </div>
 
-    {/* Recent Logs Table */}
-    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-      <div className="p-6 border-b border-gray-50 flex justify-between items-center">
-        <h3 className="font-bold text-gray-800">Recent Gate Activity</h3>
-      </div>
-      {/* SEARCH INPUT */}
-      <div className='flex flex-row pl-6'>
-        <div className="relative w-full md:w-auto">
-            <Search size={16} className="absolute left-3 top-2.5 text-gray-400" />
-            <input 
-                type="text" 
-                placeholder="Search Log..." 
-                value={gateSearch}
-                onChange={(e) => setGateSearch(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-100 transition"
-            />
+      {/* Total Students Card */}
+      <div className="bg-blue-50 p-6 rounded-2xl border border-blue-100 relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-32 h-32 bg-blue-100 rounded-bl-full opacity-50 -z-10"></div>
+        <div className="flex justify-between items-start z-10">
+          <div>
+            <p className="text-sm font-bold text-blue-400 uppercase tracking-wider mb-1">Total Residents</p>
+            <h3 className="text-4xl font-black text-blue-700">{stats.total_students}</h3>
+          </div>
+          <div className="p-3 bg-blue-200/50 rounded-xl text-blue-600"><Users size={24}/></div>
         </div>
-        {/* STATUS FILTER */}
-        <div className="ml-2 relative flex">
-            <Filter size={16} className="absolute left-3 top-2.5 text-gray-400" />
-            <select 
-                value={gateFilter}
-                onChange={(e) => setGateFilter(e.target.value)}
-                className="pl-9 pr-8 py-2 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-700 outline-none focus:ring-2 focus:ring-blue-100 cursor-pointer appearance-none"
-            >
-                <option value="All">All Activity</option>
-                <option value="Checked In">Returned</option>
-                <option value="Checked Out">Out</option>
-            </select>
+        <div className="mt-4 flex items-center text-sm font-bold text-blue-500 gap-1">
+          On Registry
         </div>
       </div>
+    </div>
+
+    {/* --- RECENT LOGS TABLE --- */}
+    <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+      
+      {/* Table Toolbar */}
+      <div className="p-5 border-b border-gray-100 flex flex-col sm:flex-row justify-between items-center gap-4 bg-gray-50/50">
+        <h3 className="font-bold text-gray-800 flex items-center gap-2">
+          Recent Gate Activity
+        </h3>
+        
+        <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+          
+          {/* Search Input */}
+          <div className="relative w-full sm:w-56">
+              <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+              <input 
+                  type="text" 
+                  placeholder="Search log..." 
+                  value={gateSearch}
+                  onChange={(e) => setGateSearch(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2 bg-white border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 transition shadow-sm"
+              />
+          </div>
+
+          {/*Date Picker*/}
+          <div className={`flex items-center w-full sm:w-auto pr-2 border rounded-lg transition shadow-sm ${
+            gateDate ? 'border-blue-400 bg-blue-50' : 'bg-white border-gray-200'
+          }`}>
+              <input 
+                  type="date" 
+                  value={gateDate}
+                  onChange={(e) => setGateDate(e.target.value)}
+                  className={`flex-1 pl-3 pr-1 py-2 bg-transparent text-sm font-medium outline-none w-full sm:w-40 ${
+                    gateDate ? 'text-blue-700' : 'text-gray-700'
+                  }`}
+                  title="Filter by Date"
+              />
+              
+              {/* Clear Date Button */}
+              {gateDate && (
+                <button 
+                  onClick={() => setGateDate('')}
+                  className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full text-blue-400 hover:text-red-600 hover:bg-red-100 transition-colors text-sm font-bold ml-1"
+                  title="Clear Date Filter"
+                >
+                  ✕
+                </button>
+              )}
+          </div>
+
+          {/* Status Filter */}
+          <div className="relative w-full sm:w-auto">
+              <Filter size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+              <select 
+                  value={gateFilter}
+                  onChange={(e) => setGateFilter(e.target.value)}
+                  className="w-full sm:w-auto pl-9 pr-8 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-700 outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer appearance-none shadow-sm"
+              >
+                  <option value="All">All Statuses</option>
+                  <option value="Checked In">Returned</option>
+                  <option value="Checked Out">Checked-Out</option>
+              </select>
+          </div>
+        </div>
+      </div>
+
+      {/* Table Content */}
       <div className="overflow-x-auto">
         <table className="w-full text-left">
-          <thead className="bg-gray-50 text-xs font-bold text-gray-500 uppercase">
+          <thead className="bg-gray-50 text-sm font-bold text-gray-500 uppercase tracking-wider border-b border-gray-200">
             <tr>
               <th className="px-6 py-4">Student</th>
               <th className="px-6 py-4">Status</th>
               <th className="px-6 py-4">Time</th>
-              <th className="px-6 py-4">Destination/Reason</th>
+              <th className="px-6 py-4">Destination & Reason</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-50">
-            {filteredRecentLogs.map((log) => (
-              <tr key={log.id} className="hover:bg-gray-50 transition">
-                <td className="px-6 py-4">
-                  <p className="font-bold text-gray-800">{log.full_name || "Unknown"}</p>
-                  <p className="text-xs text-gray-400">{log.uid}</p>
-                </td>
-                <td className="px-6 py-4">
-                  <span className={`px-3 py-1 rounded-full text-xs font-bold ${
-                    log.status === 'out' ? 'bg-orange-100 text-orange-600' : 'bg-green-100 text-green-600'
-                  }`}>
-                    {log.status === 'out' ? 'OUT' : 'RETURNED'}
-                  </span>
-                </td>
-                <td className="px-6 py-4 text-sm text-gray-500">
-                  <div className="flex items-center gap-2">
-                      <Clock size={14} />
-                      {new Date(log.exit_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </div>
-                    <div className="text-xs text-gray-400 mt-1">
-                      {new Date(log.exit_time).toLocaleDateString()}
-                    </div>
-                </td>
-                <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate">
-                  <p className="text-sm font-medium text-gray-800">{log.destination || 'N/A'}</p>
-                  <p className="text-xs text-gray-500 truncate max-w-[150px]">{log.reason}</p>
+          <tbody className="divide-y divide-gray-100">
+            {filteredRecentLogs.length === 0 ? (
+              <tr>
+                <td colSpan="4" className="px-6 py-12 text-center text-gray-400 bg-gray-50/50">
+                  <div className="flex flex-col items-center gap-2">
+                    <Filter size={32} className="text-gray-300" />
+                    <p>No log records found.</p>
+                  </div>
                 </td>
               </tr>
-            ))}
+            ) : (
+              filteredRecentLogs.map((log) => (
+                <tr key={log.id} className="hover:bg-blue-50/50 transition-colors">
+                  <td className="px-6 py-4">
+                    <p className="font-bold text-gray-800">{log.full_name || "Unknown"}</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-sm text-gray-500 font-medium">{log.uid}</span>
+                      {log.room_no && (
+                        <>
+                          <span className="text-gray-300">•</span>
+                          <span className="text-xs font-bold text-gray-600 bg-gray-100 px-1.5 py-0.5 rounded border border-gray-200">
+                            🚪 {log.room_no}
+                          </span>
+                          <span className="text-xs text-gray-500 font-medium hidden md:inline-block">
+                            {log.branch} ({log.batch})
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className={`px-2.5 py-1 rounded-md text-xs font-black uppercase tracking-wider ${
+                      log.status === 'out' ? 'bg-orange-100 text-orange-700 border border-orange-200' : 'bg-green-100 text-green-700 border border-green-200'
+                    }`}>
+                      {log.status === 'out' ? 'Checked Out' : 'Returned'}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-1.5 text-sm font-bold text-gray-700">
+                        <Clock size={14} className="text-gray-400" />
+                        {new Date(log.exit_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                      <div className="text-sm text-gray-400 mt-1 font-medium pl-5">
+                        {new Date(log.exit_time).toLocaleDateString()}
+                      </div>
+                  </td>
+                  <td className="px-6 py-4 max-w-xs">
+                    <p className="text-sm font-bold text-gray-800 truncate">{log.destination || 'N/A'}</p>
+                    <p className="text-sm text-gray-500 truncate mt-0.5">{log.reason}</p>
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>
     </div>
 
-    {/* Students Out Modal */}
+    {/* --- STUDENTS OUT MODAL --- */}
     {showOutModal && (
-      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 backdrop-blur-sm">
-        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-slide-up">
-          <div className="bg-red-600 p-4 flex justify-between items-center text-white">
-            <h3 className="font-bold text-lg">⚠️ Absent Students</h3>
-            <div className="relative w-full md:w-64">
-                <Search size={16} className="absolute left-3 top-2.5 text-gray-400" />
-                <input 
-                    type="text" 
-                    placeholder="Search Absent Student..." 
-                    value={absentSearch}
-                    onChange={(e) => setAbsentSearch(e.target.value)}
-                    className="text-black w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-red-100 focus:border-red-300 transition"
-                />
+      <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm p-4 animate-fade-in">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl overflow-hidden animate-slide-up flex flex-col max-h-[85vh]">
+          
+          <div className="bg-gradient-to-r from-red-600 to-red-700 p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 text-white">
+            <div>
+              <h3 className="font-black text-xl flex items-center gap-2">
+                <AlertTriangle size={20} /> Active Absences
+              </h3>
+              <p className="text-red-200 text-sm mt-1">Students currently off-campus</p>
             </div>
-            <button onClick={() => setShowOutModal(false)} className="hover:bg-red-700 p-1 rounded-full transition">✕</button>
+            
+            <div className="flex items-center gap-4 w-full md:w-auto">
+              <div className="relative w-full md:w-64">
+                  <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                  <input 
+                      type="text" 
+                      placeholder="Search by Name, Room, UID or branch..." 
+                      value={absentSearch}
+                      onChange={(e) => setAbsentSearch(e.target.value)}
+                      className="text-black w-full pl-9 pr-4 py-2 bg-white rounded-lg text-sm outline-none focus:ring-2 focus:ring-red-300 transition shadow-sm"
+                  />
+              </div>
+              <button 
+                onClick={() => {setShowOutModal(false); setAbsentSearch('');}} 
+                className="hover:bg-red-800 p-2 rounded-lg transition-colors bg-red-700/50 shrink-0"
+              >
+                ✕
+              </button>
+            </div>
           </div>
-          <div className="p-4 max-h-[60vh] overflow-y-auto">
-            {outStudents.length === 0 ? (
-              <p className="text-center text-gray-500 py-4">No students are currently out.</p>
+
+          <div className="flex-1 overflow-y-auto p-0 bg-gray-50">
+            {filteredOutStudents.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-64 text-gray-400">
+                <div className="bg-green-100 text-green-600 p-4 rounded-full mb-3"><Users size={32}/></div>
+                <p className="font-bold text-gray-600">No Data</p>
+                <p className="text-sm mt-1">No student info found.</p>
+              </div>
             ) : (
               <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="border-b text-xs text-gray-400 uppercase">
-                    <th className="p-2">Name</th>
-                    <th className="p-2">UID</th>
-                    <th className="p-2">Phone No.</th>
-                    <th className="p-2">Home Address</th>
-                    <th className="p-2">Action</th>
+                <thead className="bg-white sticky top-0 shadow-sm z-10">
+                  <tr className="border-b border-gray-200 text-sm font-bold text-gray-400 uppercase tracking-wider">
+                    <th className="p-4 pl-6">Student Details</th>
+                    <th className="p-4">Room No.</th>
+                    <th className="p-4">Phone No.</th>
+                    <th className="p-4">Home Address</th>
+                    <th className="p-4 pr-6 text-right">Emergency Action</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-gray-100 bg-white">
                   {filteredOutStudents.map((student) => (
-                    <tr key={student.uid} className="border-b last:border-0 hover:bg-gray-50">
-                      <td className="p-2 font-medium text-gray-800">{student.full_name}</td>
-                      <td className="p-3 text-sm text-gray-500">{student.uid}</td>
-                      <td className="p-3 text-sm text-gray-500">{student.phone_no}</td>
-                      <td className="p-3 text-sm text-gray-500">{student.address}</td>
-                      <td className="p-3 text-sm text-gray-500"><button className="w-full bg-green-600 rounded-xl text-white active:scale-95" onClick={() => checkinOverride(student.uid)}>check-in</button></td>
+                    <tr key={student.uid} className="hover:bg-red-50/30 transition-colors">
+                      <td className="p-4 pl-6">
+                        <p className="font-bold text-gray-800">{student.full_name}</p>
+                        <div className="flex flex-col items-start gap-1.5 mt-0.5">
+                          <p className="text-sm text-gray-500 font-medium">{student.uid}</p>
+                          {/* ✨ NEW: Academic Badge */}
+                          {student.branch && (
+                            <span className="text-xs text-blue-700 font-bold bg-blue-50 px-2 py-0.5 rounded border border-blue-100 uppercase tracking-wider">
+                              🎓 {student.branch} • {student.batch}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      
+                      {/* POLISHED ROOM NUMBER BADGE */}
+                      <td className="p-4">
+                        {student.room_no ? (
+                          <span className="bg-gray-100 text-gray-700 font-bold px-2.5 py-1 rounded-md text-sm border border-gray-200 whitespace-nowrap">
+                            {student.room_no}
+                          </span>
+                        ) : (
+                          <span className="text-gray-400 text-sm italic">N/A</span>
+                        )}
+                      </td>
+
+                      <td className="p-4 text-sm text-gray-600 font-medium whitespace-nowrap">{student.phone_no || 'N/A'}</td>
+                      <td className="p-4 text-sm text-gray-500 max-w-xs truncate" title={student.address}>{student.address || 'N/A'}</td>
+                      <td className="p-4 pr-6 text-right">
+                        <button 
+                          className="bg-green-50 hover:bg-green-600 text-green-700 hover:text-white border border-green-200 px-4 py-2 rounded-lg text-sm font-bold transition-all active:scale-95 whitespace-nowrap" 
+                          onClick={() => checkinOverride(student.uid)}
+                        >
+                          Force Check-In
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -275,8 +477,9 @@ const OvernightLogTab= () => {
         </div>
       </div>
     )}
-  </div>)
-  };
+  </div>
+  );
+};
 
 const GrievancesTab = () => {
   const [grievances, setGrievances] = useState([]);
@@ -286,6 +489,7 @@ const GrievancesTab = () => {
   const [filterStatus, setFilterStatus] = useState('All');
   const [searchTerm, setSearchTerm] = useState('');
   const [evidenceModal, setEvidenceModal] = useState(null);
+  const [isLocked, setIsLocked] = useState(false);
 
   useEffect(() => {
     fetchGrievances();
@@ -301,50 +505,176 @@ const GrievancesTab = () => {
       .finally(() => setLoading(false));
   };
 
-  const handleStatusUpdate = async (id, newStatus) => {
-    if (newStatus === 'Resolved') {
-      if (!window.confirm("Are you sure you want to mark this issue as Resolved? It will be moved to History.")) {
-        return; 
-      }
-    }
-    const updatedList = grievances.map(g => 
-      g.id === id ? { ...g, status: newStatus } : g
-    );
-    setGrievances(updatedList);
-
+  // 1. STATUS UPDATE LOGIC
+  const executeStatusUpdate = async (id, newStatus) => {
     try {
       await axios.put(`http://localhost:3001/api/warden/grievances/${id}`, { status: newStatus });
-      if (newStatus === 'Resolved') fetchGrievances(); // Refresh to get server timestamp
+      // Optimistic UI update or fetch fresh data
+      if (newStatus === 'Resolved') {
+        toast.success("Issue resolved & evidence deleted.");
+        fetchGrievances(); 
+      } else {
+        setGrievances(grievances.map(g => g.id === id ? { ...g, status: newStatus } : g));
+        toast.success(`Status updated to ${newStatus}`);
+      }
     } catch (err) {
-      alert("Failed to update status");
+      toast.error("Failed to update status");
       fetchGrievances(); 
     }
   };
 
-  const handleDelete = async (id) => {
-    if(!window.confirm("Delete this specific record permanently?")) return;
-
-    try {
-      await axios.delete(`http://localhost:3001/api/warden/grievances/${id}`);
-      setGrievances(grievances.filter(g => g.id !== id)); 
-    } catch (err) {
-      alert("Failed to delete record");
+  const handleStatusUpdate = (id, newStatus) => {
+    if (newStatus === 'Resolved') {
+      // Custom Confirmation Toast for Resolving
+      toast((t) => (
+        <div className="flex flex-col gap-3 min-w-[250px]">
+          <div className="flex items-center gap-2 text-gray-800">
+            <CheckCircle size={18} className="text-green-500" />
+            <p className="font-bold text-sm">Mark as Resolved?</p>
+          </div>
+          <p className="text-sm text-gray-500">This moves it to history and deletes the evidence file.</p>
+          <div className="flex gap-2 justify-end mt-1">
+            <button onClick={() => toast.dismiss(t.id)} className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-sm font-bold hover:bg-gray-200 transition-colors">Cancel</button>
+            <button 
+              onClick={() => { toast.dismiss(t.id); executeStatusUpdate(id, newStatus);}}
+              className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm font-bold hover:bg-green-700 transition-colors"
+            >
+              Confirm
+            </button>
+          </div>
+        </div>
+      ), { id: `resolve-${id}`, duration: Infinity });
+    } else {
+      executeStatusUpdate(id, newStatus);
     }
   };
 
-  const handleClearHistory = async () => {
-    if(!window.confirm("⚠️ WARNING: This will permanently delete ALL resolved complaints. This cannot be undone.")) return;
-
-    try {
-      await axios.delete('http://localhost:3001/api/warden/grievances/clear-history');
-      setGrievances(grievances.filter(g => g.status !== 'Resolved'));
-      alert("History Cleared Successfully");
-    } catch (err) {
-      alert("Failed to clear history");
-    }
+  // 2. DELETE SINGLE RECORD LOGIC
+  const executeDelete = async (id) => {
+    toast.promise(
+      axios.delete(`http://localhost:3001/api/warden/grievances/${id}`),
+      {
+        loading: 'Deleting record...',
+        success: 'Record permanently deleted',
+        error: 'Failed to delete record'
+      }
+    ).then(() => setGrievances(grievances.filter(g => g.id !== id)));
   };
 
-  
+  const handleDelete = (id) => {
+    toast((t) => (
+      <div className="flex flex-col gap-3 min-w-[250px]">
+        <div className="flex items-center gap-2 text-red-600">
+          <Trash2 size={18} />
+          <p className="font-bold text-sm">Delete this record?</p>
+        </div>
+        <div className="flex gap-2 justify-end mt-1">
+          <button onClick={() => toast.dismiss(t.id)} className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-sm font-bold hover:bg-gray-200 transition">Cancel</button>
+          <button onClick={() => { toast.dismiss(t.id); executeDelete(id); }} className="px-3 py-1.5 bg-red-600 text-white rounded-lg text-sm font-bold hover:bg-red-700 transition">Delete</button>
+        </div>
+      </div>
+    ), { id: `delete-${id}`, duration: Infinity });
+  };
+
+  // 3. CLEAR ALL HISTORY LOGIC
+  const executeClearHistory = async () => {
+    toast.promise(
+      axios.delete('http://localhost:3001/api/warden/grievances/clear-history'),
+      {
+        loading: 'Wiping history...',
+        success: 'History cleared successfully',
+        error: 'Failed to clear history'
+      }
+    ).then(() => setGrievances(grievances.filter(g => g.status !== 'Resolved')));
+  };
+
+  const handleClearHistory = () => {
+    setIsLocked(true);
+    toast((t) => (
+      <div className="flex flex-col gap-3 min-w-[280px]">
+        <div className="flex items-start gap-2 text-red-600">
+          <AlertOctagon size={24} className="shrink-0" />
+          <div>
+            <p className="font-bold text-sm">Clear All History?</p>
+            <p className="text-sm text-gray-500 mt-1">This permanently deletes all resolved complaints. It cannot be undone.</p>
+          </div>
+        </div>
+        <div className="flex gap-2 justify-end mt-2">
+          <button onClick={() => {toast.dismiss(t.id);setIsLocked(false);}} className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-sm font-bold hover:bg-gray-200 transition">Cancel</button>
+          <button onClick={() => { toast.dismiss(t.id); executeClearHistory(); setIsLocked(false);}} className="px-3 py-1.5 bg-red-600 text-white rounded-lg text-sm font-bold hover:bg-red-700 transition">Wipe History</button>
+        </div>
+      </div>
+    ), { id: 'clear-history', duration: Infinity });
+  };
+
+  // 4. RESOLVE ALL LOGIC
+  const executeResolveAll = async (itemsToResolve) => {
+    toast.promise(
+      Promise.all(itemsToResolve.map(g => axios.put(`http://localhost:3001/api/warden/grievances/${g.id}`, { status: 'Resolved' }))),
+      {
+        loading: `Resolving ${itemsToResolve.length} complaints...`,
+        success: `Successfully resolved ${itemsToResolve.length} complaints!`,
+        error: 'Some requests failed. Please try again.'
+      }
+    ).then(() => fetchGrievances());
+  };
+
+  const handleResolveAll = () => {
+    const itemsToResolve = filteredGrievances.filter(g => g.status !== 'Resolved');
+    if (itemsToResolve.length === 0) return;
+    setIsLocked(true);
+    toast((t) => (
+      <div className="flex flex-col gap-3 min-w-[280px]">
+        <div className="flex items-center gap-2 text-green-600">
+          <CheckCircle size={20} />
+          <p className="font-bold text-sm">Resolve {itemsToResolve.length} Complaints?</p>
+        </div>
+        <p className="text-sm text-gray-500">This will mark all visible complaints as Resolved and delete their attached evidence.</p>
+        <div className="flex gap-2 justify-end mt-2">
+          <button onClick={() => {toast.dismiss(t.id);setIsLocked(false);}} className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-sm font-bold hover:bg-gray-200 transition">Cancel</button>
+          <button onClick={() => { toast.dismiss(t.id);setIsLocked(false);executeResolveAll(itemsToResolve); }} className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm font-bold hover:bg-green-700 transition">Resolve All</button>
+        </div>
+      </div>
+    ), { id: 'resolve-all', duration: Infinity });
+
+  };
+
+  // 5. ASSIGN ALL LOGIC
+  const executeAssignAll = async (itemsToAssign) => {
+    toast.promise(
+      Promise.all(itemsToAssign.map(g => axios.put(`http://localhost:3001/api/warden/grievances/${g.id}`, { status: 'Assigned' }))),
+      {
+        loading: `Assigning ${itemsToAssign.length} complaints...`,
+        success: `Successfully assigned ${itemsToAssign.length} complaints!`,
+        error: 'Some requests failed. Please try again.'
+      }
+    ).then(() => fetchGrievances());
+  };
+
+  const handleAssignAll = () => {
+    // Only target items that are currently "Pending"
+    const itemsToAssign = filteredGrievances.filter(g => g.status === 'Pending');
+    if (itemsToAssign.length === 0) {
+      toast.error("No pending complaints visible to assign.");
+      return;
+    }
+    setIsLocked(true);
+    toast((t) => (
+      <div className="flex flex-col gap-3 min-w-[280px]">
+        <div className="flex items-center gap-2 text-blue-600">
+          <UserCheck size={20} />
+          <p className="font-bold text-sm">Assign {itemsToAssign.length} Complaints?</p>
+        </div>
+        <p className="text-sm text-gray-500">This will mark all visible 'Pending' complaints as 'Assigned'.</p>
+        <div className="flex gap-2 justify-end mt-2">
+          <button onClick={() => {toast.dismiss(t.id);setIsLocked(false);}} className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-sm font-bold hover:bg-gray-200 transition">Cancel</button>
+          <button onClick={() => { toast.dismiss(t.id); executeAssignAll(itemsToAssign);setIsLocked(false); }} className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 transition">Assign All</button>
+        </div>
+      </div>
+    ), { id: 'assign-all', duration: Infinity });
+  };
+
+  // FILTERS
   const filteredGrievances = grievances.filter(g => {
     const isResolved = g.status === 'Resolved';
     if (viewMode === 'active' && isResolved) return false;
@@ -353,20 +683,26 @@ const GrievancesTab = () => {
         if (g.status !== filterStatus) return false;
     }
     if (filterCategory !== 'All' && g.category !== filterCategory) return false;
+    
+    // ✨ UPGRADED: Search by UID, Name, Room, Branch, or Batch
     if (searchTerm !== '') {
         const lowerTerm = searchTerm.toLowerCase();
-        const matchUid = g.uid.toLowerCase().includes(lowerTerm);
-        const matchName = g.full_name ? g.full_name.toLowerCase().includes(lowerTerm) : false;
-        if (!matchUid && !matchName) return false;
+        const matchUid = (g.uid || '').toLowerCase().includes(lowerTerm);
+        const matchName = (g.full_name || '').toLowerCase().includes(lowerTerm);
+        const matchRoom = (g.room_no || '').toLowerCase().includes(lowerTerm);
+        const matchBranch = (g.branch || '').toLowerCase().includes(lowerTerm);
+        const matchBatch = (g.batch || '').toLowerCase().includes(lowerTerm);
+        
+        if (!matchUid && !matchName && !matchRoom && !matchBranch && !matchBatch) return false;
     }
     return true;
   });
 
   const getStatusColor = (status) => {
     switch(status) {
-      case 'Pending': return 'bg-red-50 text-red-600 border-red-100';
-      case 'Assigned': return 'bg-blue-50 text-blue-600 border-blue-100';
-      case 'Resolved': return 'bg-green-50 text-green-600 border-green-100';
+      case 'Pending': return 'bg-orange-50 text-orange-700 border-orange-200';
+      case 'Assigned': return 'bg-blue-50 text-blue-700 border-blue-200';
+      case 'Resolved': return 'bg-green-50 text-green-700 border-green-200';
       default: return 'bg-gray-50 text-gray-600';
     }
   };
@@ -374,131 +710,93 @@ const GrievancesTab = () => {
   // --- EVIDENCE MODAL COMPONENT ---
   const EvidenceModal = () => {
     if (!evidenceModal) return null;
-
     const isVideo = evidenceModal.endsWith('.mp4') || evidenceModal.endsWith('.webm');
 
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in">
-        <div className="relative bg-white rounded-2xl overflow-hidden max-w-3xl w-full shadow-2xl">
-          
-          {/* Header */}
+        <div className="relative bg-white rounded-2xl overflow-hidden max-w-4xl w-full shadow-2xl animate-slide-up">
           <div className="flex justify-between items-center p-4 border-b border-gray-100 bg-gray-50">
-            <h3 className="font-bold text-gray-700">Evidence Review</h3>
-            <button 
-              onClick={() => setEvidenceModal(null)}
-              className="p-2 bg-white rounded-full hover:bg-gray-200 transition"
-            >
-              <X size={20} />
-            </button>
+            <h3 className="font-bold text-gray-700 flex items-center gap-2"><ImageIcon size={18}/> Evidence Review</h3>
+            <button onClick={() => setEvidenceModal(null)} className="p-2 bg-white rounded-full hover:bg-gray-200 transition text-gray-500"><X size={20} /></button>
           </div>
-
-          {/* Content */}
-          <div className="p-0 bg-black flex justify-center items-center min-h-[300px]">
+          <div className="p-0 bg-black flex justify-center items-center min-h-[400px]">
             {isVideo ? (
-              <video 
-                src={`http://localhost:3001${evidenceModal}`} 
-                controls 
-                autoPlay 
-                className="max-h-[60vh] w-full"
-              />
+              <video src={`http://localhost:3001${evidenceModal}`} controls autoPlay className="max-h-[70vh] w-full" />
             ) : (
-              <img 
-                src={`http://localhost:3001${evidenceModal}`} 
-                alt="Evidence" 
-                className="max-h-[60vh] object-contain"
-              />
+              <img src={`http://localhost:3001${evidenceModal}`} alt="Evidence" className="max-h-[70vh] object-contain" />
             )}
           </div>
-          
-          {/* Footer */}
-          <div className="p-4 bg-gray-50 border-t border-gray-100 text-center">
-            <a 
-              href={`http://localhost:3001${evidenceModal}`} 
-              target="_blank" 
-              rel="noreferrer"
-              className="text-xs font-bold text-blue-600 hover:underline"
-            >
-              Open Original File
+          <div className="p-4 bg-gray-50 border-t border-gray-100 flex justify-between items-center">
+            <p className="text-sm text-gray-500 font-medium">Original file hosted on local server</p>
+            <a href={`http://localhost:3001${evidenceModal}`} target="_blank" rel="noreferrer" className="text-sm font-bold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition">
+              Open Full Size &rarr;
             </a>
           </div>
         </div>
       </div>
     );
   };
- //Resolve all
-  const handleResolveAll = async () => {
-    // 1. Get only the Unresolved items from the current filtered view
-    const itemsToResolve = filteredGrievances.filter(g => g.status !== 'Resolved');
-
-    if (itemsToResolve.length === 0) return;
-
-    // 2. Confirmation
-    const confirmMsg = `Are you sure you want to mark ${itemsToResolve.length} complaints as RESOLVED? \n\nThis will remove them from the active list and DELETE any attached evidence.`;
-    if (!window.confirm(confirmMsg)) return;
-
-    setLoading(true);
-
-    try {
-      // 3. Process all updates in parallel
-      // We map each item to an axios PUT request
-      await Promise.all(itemsToResolve.map(g => 
-        axios.put(`http://localhost:3001/api/warden/grievances/${g.id}`, { status: 'Resolved' })
-      ));
-
-      // 4. Success & Refresh
-      alert(`Successfully resolved ${itemsToResolve.length} complaints.`);
-      fetchGrievances(); // Refresh list to update UI
-    } catch (err) {
-      console.error(err);
-      alert("Some requests failed. Please refresh and try again.");
-      fetchGrievances();
-    } finally {
-      setLoading(false);
-    }
-  };
 
   return (
     <div className="animate-fade-in">
       <EvidenceModal />
-      <div className="flex justify-between items-center mb-6">
+
+      {isLocked && (
+        <div className="fixed inset-0 z-[40] bg-black/10 backdrop-blur-[2px] cursor-not-allowed" />
+      )}
+      
+      {/* HEADER */}
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-6 gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Grievances</h1>
-          <p className="text-sm text-gray-500">
-            {viewMode === 'active' ? 'Pending Complaints' : 'Resolved history'}
+          <p className="text-sm text-gray-500 mt-1">
+            {viewMode === 'active' ? 'Manage active campus complaints.' : 'Review resolved complaint history.'}
           </p>
         </div>
         
-        <div className="flex gap-3">
-          <div className="relative flex-1 md:flex-none">
-            <Search size={16} className="absolute left-3 top-2.5 text-gray-400" />
+        {/* VIEW TOGGLE */}
+        <div className="bg-gray-100 p-1 rounded-xl flex w-full lg:w-auto">
+          <button 
+            onClick={() => setViewMode('active')}
+            className={`flex-1 lg:flex-none px-6 py-2 rounded-lg text-sm font-bold transition-all ${
+              viewMode === 'active' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            Active Complaints
+          </button>
+          <button 
+            onClick={() => setViewMode('history')}
+            className={`flex-1 lg:flex-none px-6 py-2 rounded-lg text-sm font-bold transition-all ${
+              viewMode === 'history' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            Resolved History
+          </button>
+        </div>
+      </div>
+
+      {/* TOOLBAR */}
+      <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 mb-6 flex flex-col md:flex-row gap-3 items-center justify-between">
+        <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+          {/* Search */}
+          <div className="relative w-full sm:w-64">
+            <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
             <input 
               type="text"
-              placeholder="Search UID or Name..."
+              placeholder="Search UID, Name or Room_no..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-9 pr-4 py-2 w-full md:w-48 bg-white border border-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-100 transition-all"
+              className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 transition shadow-sm"
             />
           </div>
-          {viewMode === 'active' && (
-            <div className="relative">
-              <ListFilter size={16} className="absolute left-3 top-2.5 text-gray-400" />
-              <select 
-                value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value)}
-                className="pl-9 pr-8 py-2 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-700 outline-none focus:ring-2 focus:ring-blue-100 cursor-pointer appearance-none"
-              >
-                <option value="All">All Status</option>
-                <option value="Pending">Pending</option>
-                <option value="Assigned">Assigned</option>
-              </select>
-            </div>
-          )}
-          <div className="relative">
-            <Filter size={16} className="absolute left-3 top-2.5 text-gray-400" />
+          
+          {/* Category Filter */}
+          <div className="relative w-full sm:w-auto">
+            <Filter size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
             <select 
               value={filterCategory}
               onChange={(e) => setFilterCategory(e.target.value)}
-              className="pl-9 pr-4 py-2 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-700 outline-none focus:ring-2 focus:ring-blue-100 cursor-pointer appearance-none"
+              className="w-full sm:w-auto pl-9 pr-8 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer appearance-none shadow-sm"
             >
               <option value="All">All Categories</option>
               <option value="Electrical">Electrical</option>
@@ -507,146 +805,189 @@ const GrievancesTab = () => {
               <option value="Other">Other</option>
             </select>
           </div>
-          {/* --- NEW: RESOLVE ALL BUTTON --- */}
+
+          {/* Status Filter (Active View Only) */}
+          {viewMode === 'active' && (
+            <div className="relative w-full sm:w-auto">
+              <ListFilter size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+              <select 
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                className="w-full sm:w-auto pl-9 pr-8 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer appearance-none shadow-sm"
+              >
+                <option value="All">All Status</option>
+                <option value="Pending">Pending</option>
+                <option value="Assigned">Assigned</option>
+              </select>
+            </div>
+          )}
+        </div>
+
+        {/* BULK ACTIONS */}
+        <div className="w-full md:w-auto flex flex-col sm:flex-row justify-end gap-2">
+          
+          {/* ✨ NEW: Assign All Visible */}
+          {viewMode === 'active' && filteredGrievances.some(g => g.status === 'Pending') && (
+            <button 
+              onClick={handleAssignAll}
+              className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg text-sm font-bold shadow-sm hover:bg-blue-100 active:scale-95 transition"
+              title="Mark all visible pending complaints as Assigned"
+            >
+              <UserCheck size={16} /> 
+              <span>Assign All ({filteredGrievances.filter(g => g.status === 'Pending').length})</span>
+            </button>
+          )}
+
+          {/* Resolve All Visible (Updated to Green!) */}
           {viewMode === 'active' && filteredGrievances.length > 0 && (
             <button 
               onClick={handleResolveAll}
-              className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-xl text-sm font-bold shadow-md hover:bg-green-700 active:scale-95 transition"
+              className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2 bg-green-600 text-white rounded-lg text-sm font-bold shadow-md hover:bg-green-700 active:scale-95 transition"
               title="Resolve all currently visible complaints"
             >
               <CheckCircle size={16} /> 
-              <span className="hidden md:inline">Resolve All ({filteredGrievances.length})</span>
+              <span>Resolve All ({filteredGrievances.length})</span>
             </button>
-          )}
-          {viewMode === 'history' && filteredGrievances.length > 0 && (
-             <button 
-               onClick={handleClearHistory}
-               className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 border border-red-100 rounded-lg text-sm font-bold hover:bg-red-100 transition"
-             >
-               <LogOut size={16} /> Clear All History
-             </button>
           )}
 
-          <div className="bg-gray-100 p-1 rounded-xl flex h-fit">
+          {/* Wipe History */}
+          {viewMode === 'history' && filteredGrievances.length > 0 && (
             <button 
-              onClick={() => setViewMode('active')}
-              className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${
-                viewMode === 'active' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'
-              }`}
+              onClick={handleClearHistory}
+              className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2 bg-red-50 text-red-600 border border-red-200 rounded-lg text-sm font-bold hover:bg-red-100 hover:border-red-300 transition active:scale-95"
             >
-              Active
+              <Trash2 size={16} /> Wipe History
             </button>
-            <button 
-              onClick={() => setViewMode('history')}
-              className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${
-                viewMode === 'history' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              History
-            </button>
-          </div>
+          )}
         </div>
       </div>
 
+      {/* COMPLAINTS LIST */}
       <div className="space-y-4">
         {filteredGrievances.length === 0 ? (
-          <div className="text-center py-16 bg-white rounded-2xl border border-gray-100 border-dashed">
-            <p className="text-gray-400 font-medium">No {viewMode} grievances found.</p>
+          <div className="flex flex-col items-center justify-center py-20 bg-gray-50/50 rounded-2xl border border-gray-200 border-dashed">
+             <div className="bg-white p-4 rounded-full shadow-sm mb-4">
+                <CheckCircle size={32} className="text-green-500" />
+             </div>
+             <p className="text-gray-800 font-bold text-lg">Inbox Zero</p>
+             <p className="text-gray-400 font-medium text-sm mt-1">No {viewMode} grievances match your filters.</p>
           </div>
         ) : (
           filteredGrievances.map((g) => (
-            <div key={g.id} className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm flex flex-col md:flex-row gap-6 hover:shadow-md transition">
+            <div key={g.id} className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm flex flex-col md:flex-row gap-6 hover:shadow-md transition group">
               
-              {/* User Info */}
-              <div className="flex gap-4 min-w-[200px]">
-                <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center text-gray-500 font-bold text-xl">
-                  {g.full_name ? g.full_name.charAt(0) : '?'}
+              {/* User Info Column */}
+              <div className="flex gap-4 min-w-[240px]">
+                <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center font-black text-xl border border-blue-100 shadow-sm shrink-0">
+                  {g.full_name ? g.full_name.charAt(0).toUpperCase() : '?'}
                 </div>
                 <div>
                   <h3 className="font-bold text-gray-800">{g.full_name || "Unknown"}</h3>
-                  <p className="text-xs text-gray-400">{g.uid}</p>
-                  <p className="text-xs text-gray-500 mt-1">Room: <span className="font-semibold">{g.room_no}</span></p>
+                  <p className="text-sm text-gray-500 font-medium mt-0.5">{g.uid}</p>
+                  
+                  {/* ✨ NEW: Stacked Meta Badges */}
+                  <div className="mt-3 flex flex-col gap-1.5 items-start">
+                    <span className="inline-flex items-center gap-1.5 px-2 py-1 bg-gray-100 text-gray-600 rounded-md text-xs font-bold border border-gray-200 shadow-sm">
+                      🚪 {g.room_no || 'Unassigned'}
+                    </span>
+                    {g.branch && (
+                      <span className="inline-flex items-center gap-1.5 px-2 py-1 bg-blue-50 text-blue-700 rounded-md text-xs font-bold border border-blue-100 shadow-sm uppercase tracking-wider">
+                        🎓 {g.branch}
+                      </span>
+                    )}
+                    {g.phone_no && (
+                      <span className="inline-flex items-center gap-1.5 text-xs text-gray-500 font-medium mt-1">
+                        📞 {g.phone_no}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
 
               {/* Complaint Content */}
-              <div className="flex-1">
-                <div className="flex justify-between items-start mb-2">
-                  <div className="flex items-center gap-2">
-                     <span className="text-xs font-bold text-gray-400 uppercase">Description</span>
-                     <span className="text-[10px] px-2 py-0.5 bg-gray-100 text-gray-600 rounded-md border border-gray-200">
+              <div className="flex-1 flex flex-col justify-between">
+                <div>
+                  <div className="flex justify-between items-start mb-3">
+                    <span className="text-sm px-2.5 py-1 bg-gray-100 text-gray-600 rounded-md border border-gray-200 font-bold uppercase tracking-wider">
                         {g.category}
-                     </span>
+                    </span>
+                    
+                    {viewMode === 'active' ? (
+                      <div className="relative"> 
+                        <select 
+                          value={g.status}
+                          onChange={(e) => handleStatusUpdate(g.id, e.target.value)}
+                          // ✨ Changed text-center to pl-3 pr-8 to make room for the icon!
+                          className={`text-sm text-center pr-3 py-1.5 rounded-lg font-bold border outline-none cursor-pointer appearance-none shadow-sm ${getStatusColor(g.status)}`}
+                        >
+                          <option value="Pending">Pending</option>
+                          <option value="Assigned">Assigned</option>
+                          <option value="Resolved">✓ Mark Resolved</option>
+                        </select>
+                        
+                        {/* ✨ The Custom Dropdown Arrow */}
+                        <ChevronDown 
+                          size={14} 
+                          className="absolute right-2.5 top-1/2 transform -translate-y-1/2 pointer-events-none opacity-60" 
+                        />
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-3">
+                          <span className="px-3 py-1.5 rounded-lg text-sm font-black uppercase tracking-wider bg-green-50 text-green-700 border border-green-200">
+                             Resolved
+                          </span>
+                          <button 
+                              onClick={() => handleDelete(g.id)}
+                              className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition opacity-0 group-hover:opacity-100 focus:opacity-100"
+                              title="Delete Record"
+                          >
+                              <Trash2 size={16} />
+                          </button>
+                      </div>
+                    )}
                   </div>
                   
-                  {viewMode === 'active' ? (
-                    <select 
-                      value={g.status}
-                      onChange={(e) => handleStatusUpdate(g.id, e.target.value)}
-                      className={`text-xs px-3 py-1 rounded-full font-bold border outline-none cursor-pointer ${getStatusColor(g.status)}`}
-                    >
-                      <option value="Pending">Pending</option>
-                      <option value="Assigned">Assigned</option>
-                      <option value="Resolved">Resolved</option>
-                    </select>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                        <span className="px-3 py-1 rounded-full text-xs font-bold bg-green-50 text-green-600 border border-green-100">
-                        Resolved
-                        </span>
-                        <button 
-                            onClick={() => handleDelete(g.id)}
-                            className="p-1.5 text-red-400 hover:bg-red-50 rounded-lg transition"
-                            title="Delete This Record"
-                        >
-                            <Trash2 size={16} />
-                        </button>
-                    </div>
-                  )}
+                  <p className="text-gray-700 text-sm leading-relaxed mb-4">{g.description}</p>
                 </div>
                 
-                <p className="text-gray-700 text-sm mb-4 leading-relaxed">{g.description}</p>
-                
-                <div className="flex gap-8 items-end border-t border-gray-50 pt-4 mt-2">
+                {/* Timestamps & Evidence */}
+                <div className="flex gap-6 items-end border-t border-gray-100 pt-4 mt-2">
                   <div>
-                    <p className="text-[10px] uppercase font-bold text-gray-400 mb-1">Logged On</p>
-                    <div className="flex items-center gap-2 text-gray-700">
+                    <p className="text-sm uppercase font-bold text-gray-400 mb-1">Logged On</p>
+                    <div className="flex items-center gap-1.5 text-gray-700">
                       <Clock size={14} className="text-gray-400"/>
-                      <span className="text-sm font-medium">
+                      <span className="text-sm font-bold">
                         {new Date(g.date_logged).toLocaleDateString()}
                       </span>
                     </div>
                   </div>
 
-                  {/* Resolved Date */}
                   {viewMode === 'history' && g.date_resolved && (
                     <div>
-                      <p className="text-[10px] uppercase font-bold text-green-600 mb-1">Resolved On</p>
-                      <div className="flex items-center gap-2 text-green-700">
+                      <p className="text-sm uppercase font-bold text-green-600 mb-1">Resolved On</p>
+                      <div className="flex items-center gap-1.5 text-green-700">
                         <CheckCircle size={14} />
                         <span className="text-sm font-bold">
                           {new Date(g.date_resolved).toLocaleDateString()}
                         </span>
-                        <span className="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-md">
+                        <span className="text-sm text-green-600 font-bold ml-1">
                           {new Date(g.date_resolved).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                         </span>
                       </div>
                     </div>
                   )}
 
-                  {/* Evidence Icon */}
                   <div className="ml-auto">
                     {g.img_url ? (
                       <button 
                         onClick={() => setEvidenceModal(g.img_url)}
-                        className="w-10 h-10 bg-blue-50 hover:bg-blue-100 text-blue-500 rounded-lg border border-blue-200 flex items-center justify-center transition-all"
-                        title="View Evidence"
+                        className="h-9 px-3 bg-blue-50 hover:bg-blue-600 hover:text-white text-blue-600 rounded-lg border border-blue-200 flex items-center gap-2 transition-all text-sm font-bold shadow-sm"
                       >
-                        {g.img_url.endsWith('.mp4') ? <FileVideo size={18} /> : <ImageIcon size={18} />}
+                        {g.img_url.endsWith('.mp4') ? <><FileVideo size={16} /> View Video</> : <><ImageIcon size={16} /> View Photo</>}
                       </button>
                     ) : (
-                      <div className="w-10 h-10 bg-gray-50 rounded-lg border border-gray-200 flex items-center justify-center text-gray-300 cursor-not-allowed" title="No Evidence">
-                        <ImageIcon size={18} />
+                      <div className="h-9 px-3 bg-gray-50 rounded-lg border border-gray-200 flex items-center gap-2 text-gray-400 cursor-not-allowed text-sm font-bold">
+                        <ImageIcon size={16} /> No Evidence
                       </div>
                     )}
                   </div>
@@ -661,13 +1002,79 @@ const GrievancesTab = () => {
 };
 
 const StudentMgmtTab = () => {
+  //whitelisted branches
+  const ALLOWED_BRANCHES = ['CSE', 'CIVIL', 'MECHANICAL', 'ELECTRICAL', 'ECE', 'IT', 'AIDS'];
+  
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  
+  const [uploadingStudents, setUploadingStudents] = useState(false);
+
+  // ✨ NEW: Academic Filters
+  const [filterBatch, setFilterBatch] = useState('All');
+  const [filterBranch, setFilterBranch] = useState('All');
+
   // Edit State
-  const [editingId, setEditingId] = useState(null); // ID of student being edited
-  const [editForm, setEditForm] = useState({}); // Temp data while editing
+  const [editingId, setEditingId] = useState(null); 
+  const [editForm, setEditForm] = useState({}); 
+
+  // ✨ NEW: Add Student State
+  const [showAddModal, setShowAddModal] = useState(false);
+  // ✨ NEW: State for the Upload Guide Modal
+  const [showUploadGuide, setShowUploadGuide] = useState(false);
+
+  const [newStudent, setNewStudent] = useState({
+    uid: '', full_name: '', dob: '', phone_no: '', room_no: '', batch: '', branch: '', address: ''
+  });
+  
+  // ✨ NEW: The Invisible Shield
+  const [isLocked, setIsLocked] = useState(false);
+
+  // --- ADD STUDENT LOGIC ---
+  const handleAddStudent = async (e) => {
+    e.preventDefault();
+    toast.promise(
+      axios.post('http://localhost:3001/api/warden/students', newStudent),
+      {
+        loading: 'Adding student...',
+        success: (res) => {
+          fetchStudents();
+          setShowAddModal(false);
+          setNewStudent({ uid: '', full_name: '', dob: '', phone_no: '', room_no: '', batch: '', branch: '', address: '' }); // Reset form
+          return res.data.message;
+        },
+        error: (err) => err.response?.data?.error || 'Failed to add student.',
+      }
+    );
+  };
+
+  // --- DELETE STUDENT LOGIC ---
+  const handleDelete = (student) => {
+    setIsLocked(true); // Lock the screen!
+    
+    toast((t) => (
+      <div className="flex flex-col gap-3 min-w-[280px]">
+        <div className="flex items-center gap-2 text-red-600">
+          <Trash2 size={20} />
+          <p className="font-bold text-sm">Delete {student.full_name}?</p>
+        </div>
+        <p className="text-xs text-gray-500">This will permanently remove <b>{student.uid}</b> from the system.</p>
+        <div className="flex gap-2 justify-end mt-2">
+          <button onClick={() => { toast.dismiss(t.id); setIsLocked(false); }} className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs font-bold hover:bg-gray-200 transition">Cancel</button>
+          <button onClick={() => { 
+            toast.dismiss(t.id); 
+            setIsLocked(false);
+            
+            toast.promise(
+              axios.delete(`http://localhost:3001/api/warden/students/${student.uid}`),
+              { loading: 'Deleting...', success: 'Student deleted!', error: 'Failed to delete student.' }
+            ).then(() => fetchStudents());
+
+          }} className="px-3 py-1.5 bg-red-600 text-white rounded-lg text-xs font-bold hover:bg-red-700 transition">Delete</button>
+        </div>
+      </div>
+    ), { id: `delete-${student.uid}`, duration: Infinity });
+  };
 
   useEffect(() => {
     fetchStudents();
@@ -681,6 +1088,54 @@ const StudentMgmtTab = () => {
       .finally(() => setLoading(false));
   };
 
+const handleStudentCSVUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setUploadingStudents(true);
+    const formData = new FormData();
+    formData.append('file', file);
+
+    toast.promise(
+      axios.post('http://localhost:3001/api/warden/students/bulk-upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      }),
+      {
+        loading: 'Syncing CSV to Database...',
+        success: (res) => {
+          fetchStudents(); 
+          return res.data.message;
+        },
+        // ✨ NEW: Dynamically pull the exact error message from the backend!
+        error: (err) => err.response?.data?.error || 'Server error during upload.',
+      }
+    ).finally(() => {
+      setUploadingStudents(false);
+      e.target.value = null; 
+    });
+  };
+
+  // ✨ NEW: Generates a CSV template on the fly
+  const downloadTemplate = () => {
+    const headers = "uid,full_name,dob,phone_no,address,room_no,batch,branch\n";
+    // ✨ Updated dummy data so they know exactly how the date should look
+    const dummyData = "u2303004,Abhijith sreegith krishna,18-05-2005,9074907104,123 Campus Hostel,E-27,2023-27,CSE\n";
+    
+    const blob = new Blob([headers + dummyData], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'Student_Upload_Template.csv';
+    document.body.appendChild(a);
+    a.click();
+    
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    toast.success("Template downloaded!");
+  };
+  
   const startEdit = (student) => {
     setEditingId(student.uid);
     setEditForm({ ...student });
@@ -692,56 +1147,157 @@ const StudentMgmtTab = () => {
   };
 
   const saveEdit = async () => {
-    try {
-      await axios.put(`http://localhost:3001/api/warden/students/${editingId}`, editForm);
-      
-      // Update local list without re-fetching
+    toast.promise(
+      axios.put(`http://localhost:3001/api/warden/students/${editingId}`, editForm),
+      {
+        loading: 'Saving changes...',
+        success: 'Student details updated!',
+        error: 'Failed to update details.',
+      }
+    ).then(() => {
       setStudents(students.map(s => s.uid === editingId ? { ...editForm, checkout_count: s.checkout_count } : s));
       setEditingId(null);
-      alert("Student Details Updated");
-    } catch (err) {
-      alert("Failed to update details");
-    }
+    });
   };
 
-const formatDOB = (dob) => {
-  if (!dob) return "N/A";
+// ✨ Converts standard DB date into clean readable text for the table
+  const formatDOB = (dobString) => {
+    if (!dobString) return "N/A";
+    const date = new Date(dobString);
+    if (isNaN(date.getTime())) return "Invalid Date";
+    
+    // Returns e.g., "15/08/2005"
+    return date.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' }); 
+  };
 
-  if (dob.length === 8 && !isNaN(dob)) {
-    return `${dob.slice(0, 2)}/${dob.slice(2, 4)}/${dob.slice(4)}`;
-  }
-  return "check dob format"; 
-};
-  // --- FILTER LOGIC ---
+  // ✨ NEW: Dynamically extract unique batches and branches from the data for the dropdowns
+  const uniqueBatches = [...new Set(students.map(s => s.batch).filter(Boolean))].sort();
+  const uniqueBranches = [...new Set(students.map(s => s.branch).filter(Boolean))].sort();
+
+  // ✨ UPGRADED: Filter Logic now handles Search + Batch + Branch
   const filteredStudents = students.filter(s => {
     const term = searchTerm.toLowerCase();
-    return (
-      s.full_name?.toLowerCase().includes(term) ||
-      s.uid?.toLowerCase().includes(term) ||
-      s.room_no?.toLowerCase().includes(term)
+    
+    // 1. Text Search
+    const matchSearch = (
+      (s.full_name || '').toLowerCase().includes(term) ||
+      (s.uid || '').toLowerCase().includes(term) ||
+      (s.room_no || '').toLowerCase().includes(term) ||
+      (s.batch || '').toLowerCase().includes(term) ||
+      (s.branch || '').toLowerCase().includes(term)
     );
+
+    // 2. Dropdown Filters
+    const matchBatch = filterBatch === 'All' ? true : s.batch === filterBatch;
+    const matchBranch = filterBranch === 'All' ? true : s.branch === filterBranch;
+
+    return matchSearch && matchBatch && matchBranch;
   });
 
   return (
-    <div className="animate-fade-in p-6">
+    <div className="animate-fade-in p-2 sm:p-6">
       
       {/* HEADER */}
-      <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
+      <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center mb-8 gap-4">
+        
+        {/* LEFT: Title & Counter */}
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Student Registry</h1>
-          <p className="text-sm text-gray-500">Manage {students.length} residents</p>
+          <p className="text-sm text-gray-500 mt-1">Manage {students.length} active residents</p>
         </div>
 
-        {/* SEARCH */}
-        <div className="relative w-full md:w-72">
-           <Search size={18} className="absolute left-3 top-3 text-gray-400" />
-           <input 
-             type="text" 
-             placeholder="Search Name, UID, Room..." 
-             value={searchTerm}
-             onChange={(e) => setSearchTerm(e.target.value)}
-             className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-100 transition shadow-sm"
-           />
+        {/* RIGHT: Action Bar (Filters + Search + Upload) */}
+        <div className="flex flex-col sm:flex-row flex-wrap items-center gap-3 w-full xl:w-auto">
+          
+          {/* ✨ Upgraded Branch Filter  */}
+              <select 
+                value={filterBranch} 
+                onChange={(e) => setFilterBranch(e.target.value)}
+                className="px-3 py-2 bg-white border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-sm min-w-[140px] shadow-sm font-medium"
+              >
+                <option value="All">All Branches</option>
+                {ALLOWED_BRANCHES.map(branch => (
+                  <option key={branch} value={branch}>{branch}</option>
+                ))}
+              </select>
+
+          {/* Batch Filter */}
+          {uniqueBatches.length > 0 && (
+            <div className="relative w-full sm:w-auto">
+              <Filter size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+              <select 
+                value={filterBatch}
+                onChange={(e) => setFilterBatch(e.target.value)}
+                className="w-full sm:w-auto pl-9 pr-8 py-2.5 bg-white border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer text-sm font-medium shadow-sm appearance-none"
+              >
+                <option value="All">All Batches</option>
+                {uniqueBatches.map(b => <option key={b} value={b}>{b}</option>)}
+              </select>
+            </div>
+          )}
+
+          {/* SEARCH */}
+          <div className="relative w-full sm:w-64">
+             <Search size={18} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+             <input 
+               type="text" 
+               placeholder="Search by name, room..." 
+               value={searchTerm}
+               onChange={(e) => setSearchTerm(e.target.value)}
+               className="w-full pl-9 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition shadow-sm h-11 text-sm font-medium"
+             />
+          </div>
+
+          {/* UPLOAD & TEMPLATE ACTIONS */}
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            
+            {/* ✨ NEW: Manual Add Button */}
+            <button 
+              onClick={() => setShowAddModal(true)}
+              className="px-4 py-2.5 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition shadow-sm h-11 flex items-center justify-center gap-2 text-sm"
+            >
+              <Plus size={16} /> <span className="hidden sm:inline">Add Student</span>
+            </button>
+            
+            {/* ✨ NEW: Download Template Button */}
+            <button 
+              onClick={downloadTemplate}
+              className="px-4 py-2.5 bg-blue-50 text-blue-600 border border-blue-100 rounded-xl font-bold hover:bg-blue-100 transition shadow-sm h-11 flex items-center justify-center gap-2 text-sm"
+              title="Download formatting template"
+            >
+              <Download size={16} /> <span className="hidden sm:inline">student upload Template</span>
+            </button>
+            {/* ✨ NEW: Help/Guide Button */}
+            <button 
+              onClick={() => setShowUploadGuide(true)}
+              className="p-2.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-colors border border-transparent hover:border-blue-100"
+              title="View Formatting Rules"
+            >
+              <HelpCircle size={20} />
+            </button>
+            {/* Existing Upload CSV Button */}
+            <div className="relative overflow-hidden w-full sm:w-auto">
+              <button 
+                className="w-full sm:w-auto bg-green-600 text-white px-5 py-2.5 rounded-xl font-bold hover:bg-green-700 active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed transition shadow-sm h-11 flex items-center justify-center gap-2 text-sm" 
+                disabled={uploadingStudents}
+              >
+                {uploadingStudents ? (
+                  <><span className="animate-spin">⏳</span> Syncing...</>
+                ) : (
+                  <><Upload size={16} /> Upload CSV</>
+                )}
+              </button>
+              <input 
+                type="file" 
+                accept=".csv" 
+                onChange={handleStudentCSVUpload} 
+                disabled={uploadingStudents}
+                title="Upload Student Roster"
+                className="absolute top-0 left-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
+              />
+            </div>
+          </div>
+
         </div>
       </div>
 
@@ -749,7 +1305,7 @@ const formatDOB = (dob) => {
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
-            <thead className="bg-gray-50 text-xs font-bold text-gray-400 uppercase">
+            <thead className="bg-gray-50 text-xs font-bold text-gray-500 uppercase tracking-wider border-b border-gray-200">
               <tr>
                 <th className="px-6 py-4">Student Profile</th>
                 <th className="px-6 py-4">Room & Address</th>
@@ -757,119 +1313,348 @@ const formatDOB = (dob) => {
                 <th className="px-6 py-4 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50 text-sm">
-              {filteredStudents.map((s) => (
-                <tr key={s.uid} className={`transition ${editingId === s.uid ? 'bg-blue-50/50' : 'hover:bg-gray-50'}`}>
-                  
-                  {/* COL 1: IDENTITY */}
-                  <td className="px-6 py-4">
-                    {editingId === s.uid ? (
-                        <div className="space-y-2">
-                            <input 
-                              value={editForm.full_name} 
-                              onChange={(e) => setEditForm({...editForm, full_name: e.target.value})}
-                              className="w-full p-1 border rounded text-sm font-bold"
-                            />
-                            <input 
-                              value={editForm.phone_no} 
-                              onChange={(e) => setEditForm({...editForm, phone_no: e.target.value})}
-                              className="w-full p-1 border rounded text-xs"
-                              placeholder="Phone"
-                            />
-                        </div>
-                    ) : (
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center font-bold text-lg">
-                            {s.full_name ? s.full_name.charAt(0) : '?'}
+            <tbody className="divide-y divide-gray-100 text-sm">
+              {filteredStudents.length === 0 && !loading ? (
+                <tr>
+                  <td colSpan="4" className="px-6 py-12 text-center text-gray-400 bg-gray-50/50">
+                    <div className="flex flex-col items-center gap-2">
+                      <Users size={32} className="text-gray-300" />
+                      <p className="font-medium">No students found matching your filters.</p>
+                      {/* Quick clear filters button */}
+                      {(filterBatch !== 'All' || filterBranch !== 'All' || searchTerm !== '') && (
+                        <button 
+                          onClick={() => {setFilterBatch('All'); setFilterBranch('All'); setSearchTerm('');}}
+                          className="mt-2 text-blue-500 hover:text-blue-700 text-xs font-bold transition"
+                        >
+                          Clear all filters
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                filteredStudents.map((s) => (
+                  <tr key={s.uid} className={`transition-colors ${editingId === s.uid ? 'bg-blue-50/40' : 'hover:bg-blue-50/30'}`}>
+                    
+                    {/* COL 1: IDENTITY & ACADEMICS */}
+                    <td className="px-6 py-4">
+                      {editingId === s.uid ? (
+                          <div className="space-y-2 max-w-[200px]">
+                              <input 
+                                value={editForm.full_name} 
+                                onChange={(e) => setEditForm({...editForm, full_name: e.target.value})}
+                                className="w-full px-3 py-1.5 border border-blue-300 rounded outline-none focus:ring-2 focus:ring-blue-500 text-sm font-bold shadow-sm"
+                                placeholder="Full Name"
+                              />
+                              <input 
+                                value={editForm.phone_no} 
+                                onChange={(e) => setEditForm({...editForm, phone_no: e.target.value})}
+                                className="w-full px-3 py-1.5 border border-blue-300 rounded outline-none focus:ring-2 focus:ring-blue-500 text-sm shadow-sm"
+                                placeholder="Phone Number"
+                              />
+                              {/* ✨ NEW: Inline Edit inputs for Branch & Batch */}
+                              <div className="flex gap-2">
+                                {/* Fixed: Removed label, updated state to editForm, matched CSS styling */}
+                                <select 
+                                  required 
+                                  value={editForm.branch || ''} 
+                                  onChange={e => setEditForm({...editForm, branch: e.target.value})} 
+                                  className="w-1/2 px-3 py-1.5 border border-blue-300 rounded outline-none focus:ring-2 focus:ring-blue-500 text-xs shadow-sm bg-white cursor-pointer"
+                                  title="Select Branch"
+                                >
+                                  <option value="" disabled>Branch</option>
+                                  {ALLOWED_BRANCHES.map(b => (
+                                    <option key={b} value={b}>{b}</option>
+                                  ))}
+                                </select>
+
+                                <input 
+                                  value={editForm.batch || ''} 
+                                  onChange={(e) => setEditForm({...editForm, batch: e.target.value})}
+                                  className="w-1/2 px-3 py-1.5 border border-blue-300 rounded outline-none focus:ring-2 focus:ring-blue-500 text-xs shadow-sm"
+                                  placeholder="Batch (2023-27)"
+                                />
+                              </div>
                           </div>
-                          <div>
-                            <p className="font-bold text-gray-800">{s.full_name}</p>
-                            <p className="text-xs text-gray-400 font-mono">{s.uid}</p>
-                            <div className="flex items-center gap-1 mt-1 text-xs text-gray-500">
-                               <Phone size={10} /> {s.phone_no || "No Phone"}
+                      ) : (
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 text-blue-600 flex items-center justify-center font-black text-lg shrink-0">
+                              {s.full_name ? s.full_name.charAt(0).toUpperCase() : '?'}
+                            </div>
+                            <div>
+                              <p className="font-bold text-gray-800">{s.full_name}</p>
+                              <p className="text-sm text-gray-500 font-medium">{s.uid}</p>
+                              
+                              {/* ✨ NEW: Academic Pills */}
+                              <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                                {s.branch && (
+                                  <span className="px-2 py-0.5 bg-purple-50 text-purple-700 rounded text-[10px] font-black uppercase tracking-wider border border-purple-100">
+                                    {s.branch}
+                                  </span>
+                                )}
+                                {s.batch && (
+                                  <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-[10px] font-bold border border-gray-200">
+                                    {s.batch}
+                                  </span>
+                                )}
+                                {!s.branch && !s.batch && (
+                                  <div className="flex items-center gap-1 text-[10px] font-semibold text-gray-400">
+                                    <Phone size={10} /> {s.phone_no || "No Data"}
+                                  </div>
+                                )}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                    )}
-                  </td>
+                      )}
+                    </td>
 
-                  {/* COL 2: RESIDENCY */}
-                  <td className="px-6 py-4 max-w-xs">
-                    {editingId === s.uid ? (
-                        <div className="space-y-2">
-                             <input 
-                              value={editForm.room_no || ''} 
-                              onChange={(e) => setEditForm({...editForm, room_no: e.target.value})}
-                              className="w-24 p-1 border rounded text-sm font-bold"
-                              placeholder="Room"
-                            />
-                            <textarea 
-                              value={editForm.address || ''} 
-                              onChange={(e) => setEditForm({...editForm, address: e.target.value})}
-                              className="w-full p-1 border rounded text-xs"
-                              rows={2}
-                              placeholder="Address"
-                            />
-                        </div>
-                    ) : (
-                        <div>
-                           <div className="flex items-center gap-2 mb-1">
-                              <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs font-bold">
-                                {s.room_no || "Unassigned"}
-                              </span>
-                           </div>
-                           <p className="text-xs text-gray-500 truncate max-w-[200px]" title={s.address}>
-                             {s.address || "No Address Provided"}
-                           </p>
-                           {/* Using Password Hash as DOB holder*/}
-                           <p className="text-[10px] text-gray-400 mt-1 flex items-center gap-1">
-                             <Calendar size={10}/> DOB: {formatDOB(s.dob)}
-                           </p>
-                        </div>
-                    )}
-                  </td>
+                    {/* COL 2: RESIDENCY */}
+                    <td className="px-6 py-4 max-w-xs">
+                      {editingId === s.uid ? (
+                          <div className="space-y-2">
+                              <input 
+                                value={editForm.room_no || ''} 
+                                onChange={(e) => setEditForm({...editForm, room_no: e.target.value})}
+                                className="w-full px-3 py-1.5 border border-blue-300 rounded outline-none focus:ring-2 focus:ring-blue-500 text-sm font-bold shadow-sm"
+                                placeholder="Room Number"
+                              />
+                              <textarea 
+                                value={editForm.address || ''} 
+                                onChange={(e) => setEditForm({...editForm, address: e.target.value})}
+                                className="w-full px-3 py-1.5 border border-blue-300 rounded outline-none focus:ring-2 focus:ring-blue-500 text-sm shadow-sm resize-none"
+                                rows={2}
+                                placeholder="Home Address"
+                              />
+                              {/* ✨ NEW: The missing DOB Calendar Input! */}
+                              <div className="flex items-center gap-2">
+                                <Calendar size={14} className="text-gray-400 shrink-0" />
+                                <input 
+                                  type="date" 
+                                  value={editForm.dob ? editForm.dob.split('T')[0] : ''} 
+                                  onChange={(e) => setEditForm({...editForm, dob: e.target.value})}
+                                  className="w-full px-3 py-1.5 border border-blue-300 rounded outline-none focus:ring-2 focus:ring-blue-500 text-xs shadow-sm font-bold text-gray-700"
+                                  title="Date of Birth"
+                                />
+                              </div>
+                          </div>
+                      ) : (
+                          <div className="flex flex-col items-start gap-1">
+                             <span className="bg-gray-100 border border-gray-200 text-gray-700 px-2.5 py-1 rounded-md text-xs font-bold whitespace-nowrap">
+                               🚪 {s.room_no || "Unassigned"}
+                             </span>
+                             <p className="text-sm text-gray-500 truncate w-full mt-1" title={s.address}>
+                               {s.address || "No Address Provided"}
+                             </p>
+                             <p className="text-xs text-gray-400 mt-0.5 flex items-center gap-1.5 font-medium">
+                               <Calendar size={12}/> DOB: {formatDOB(s.dob)}
+                             </p>
+                          </div>
+                      )}
+                    </td>
 
-                  {/* COL 3: STATS */}
-                  <td className="px-6 py-4">
-                     <div className="flex flex-col gap-1">
-                        <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Gate Activity</span>
-                        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-bold w-fit ${s.checkout_count > 10 ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-600'}`}>
-                           <Shield size={12} /> {s.checkout_count || 0} Exits
-                        </span>
-                     </div>
-                  </td>
+                    {/* COL 3: STATS */}
+                    <td className="px-6 py-4">
+                       <div className="flex flex-col gap-1.5">
+                          <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Gate Activity</span>
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold w-fit border ${
+                            s.checkout_count >= 10 
+                              ? 'bg-orange-50 text-orange-700 border-orange-200' 
+                              : 'bg-green-50 text-green-700 border-green-200'
+                          }`}>
+                             <Shield size={14} /> 
+                             {s.checkout_count || 0} {s.checkout_count === 1 ? 'Exit' : 'Exits'}
+                          </span>
+                       </div>
+                    </td>
 
-                  {/* COL 4: ACTIONS */}
-                  <td className="px-6 py-4 text-right">
-                    {editingId === s.uid ? (
-                        <div className="flex justify-end gap-2">
-                            <button onClick={saveEdit} className="p-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200" title="Save">
-                                <Save size={16} />
+                    {/* COL 4: ACTIONS */}
+                    <td className="px-6 py-4 text-right">
+                      {editingId === s.uid ? (
+                          <div className="flex justify-end gap-2">
+                              <button 
+                                onClick={cancelEdit} 
+                                className="flex items-center gap-1 px-3 py-1.5 bg-white border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 font-bold text-xs shadow-sm transition-colors" 
+                                title="Cancel"
+                              >
+                                  <X size={14} /> Cancel
+                              </button>
+                              <button 
+                                onClick={saveEdit} 
+                                className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold text-xs shadow-sm transition-colors" 
+                                title="Save Changes"
+                              >
+                                  <Save size={14} /> Save
+                              </button>
+                              {/* ✨ NEW: Delete Button */}
+                            <button 
+                              onClick={() => handleDelete(s)} 
+                              className="p-2 text-gray-400 hover:bg-red-50 hover:text-red-600 rounded-lg transition-colors border border-transparent hover:border-red-100"
+                              title="Delete Student"
+                            >
+                               <Trash2 size={16} />
                             </button>
-                            <button onClick={cancelEdit} className="p-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200" title="Cancel">
-                                <X size={16} />
-                            </button>
-                        </div>
-                    ) : (
-                        <button onClick={() => startEdit(s)} className="p-2 text-gray-400 hover:bg-blue-50 hover:text-blue-600 rounded-lg transition">
-                           <Edit2 size={16} />
-                        </button>
-                    )}
-                  </td>
+                          </div>
+                      ) : (
+                          <button 
+                            onClick={() => startEdit(s)} 
+                            className="p-2 text-gray-400 hover:bg-blue-50 hover:text-blue-600 rounded-lg transition-colors border border-transparent hover:border-blue-100"
+                            title="Edit Student"
+                          >
+                             <Edit2 size={16} />
+                          </button>
+                      )}
+                    </td>
 
-                </tr>
-              ))}
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
-          
-          {filteredStudents.length === 0 && (
-            <div className="text-center py-12 text-gray-400">No students found matching "{searchTerm}"</div>
-          )}
         </div>
       </div>
+    {/* 🔒 THE INVISIBLE SHIELD for Delete Toast */}
+      {isLocked && <div className="fixed inset-0 z-[999] bg-black/10 backdrop-blur-[2px] cursor-not-allowed" />}
+
+      {/* ✨ NEW: ADD STUDENT MODAL */}
+      {showAddModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden">
+            <div className="flex justify-between items-center p-5 border-b border-gray-100 bg-gray-50/50">
+              <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                <Plus size={20} className="text-blue-600" /> Manually Add Student
+              </h2>
+              <button onClick={() => setShowAddModal(false)} className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100 transition"><X size={20}/></button>
+            </div>
+            
+            <form onSubmit={handleAddStudent} className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 mb-1 uppercase tracking-wider">UID *</label>
+                  <input required value={newStudent.uid} onChange={e => setNewStudent({...newStudent, uid: e.target.value})} placeholder="U1234567" className="w-full px-3 py-2 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-sm font-bold uppercase"/>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 mb-1 uppercase tracking-wider">Date of Birth *</label>
+                  <input required type="date" value={newStudent.dob} onChange={e => setNewStudent({...newStudent, dob: e.target.value})} className="w-full px-3 py-2 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-sm"/>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-500 mb-1 uppercase tracking-wider">Full Name *</label>
+                <input required value={newStudent.full_name} onChange={e => setNewStudent({...newStudent, full_name: e.target.value})} placeholder="student name" className="w-full px-3 py-2 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-sm font-bold"/>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 mb-1 uppercase tracking-wider">Phone Number *</label>
+                  <input required maxLength="10" value={newStudent.phone_no} onChange={e => setNewStudent({...newStudent, phone_no: e.target.value.replace(/[^0-9]/g, '')})} placeholder="10 Digits" className="w-full px-3 py-2 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-sm"/>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 mb-1 uppercase tracking-wider">Room *</label>
+                  <input required value={newStudent.room_no} onChange={e => setNewStudent({...newStudent, room_no: e.target.value})} placeholder="e.g. E-27" className="w-full px-3 py-2 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-sm uppercase"/>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 mb-1 uppercase tracking-wider">Branch *</label>
+                  {/* ✨ Replaced text input with a locked Dropdown */}
+                  <select 
+                    required 
+                    value={newStudent.branch} 
+                    onChange={e => setNewStudent({...newStudent, branch: e.target.value})} 
+                    className="w-full px-3 py-2 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white cursor-pointer"
+                  >
+                    <option value="" disabled>Select Branch</option>
+                    {ALLOWED_BRANCHES.map(b => (
+                      <option key={b} value={b}>{b}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 mb-1 uppercase tracking-wider">Batch *</label>
+                  <input required value={newStudent.batch} onChange={e => setNewStudent({...newStudent, batch: e.target.value})} placeholder="e.g. 2023-27" className="w-full px-3 py-2 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-sm"/>
+                </div>
+              </div>
+
+              {/* ✨ NEW: Required Address Field */}
+              <div>
+                <label className="block text-xs font-bold text-gray-500 mb-1 uppercase tracking-wider">Address *</label>
+                <textarea required value={newStudent.address} onChange={e => setNewStudent({...newStudent, address: e.target.value})} placeholder="Home Address" rows={2} className="w-full px-3 py-2 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-none"/>
+              </div>
+
+              <div className="pt-4 flex justify-end gap-2 border-t border-gray-100 mt-2">
+                <button type="button" onClick={() => setShowAddModal(false)} className="px-4 py-2 bg-gray-100 text-gray-600 rounded-xl text-sm font-bold hover:bg-gray-200 transition">Cancel</button>
+                <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition">Save Student</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {/* ✨ NEW: CSV UPLOAD GUIDE MODAL */}
+      {showUploadGuide && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden">
+            <div className="flex justify-between items-center p-5 border-b border-gray-100 bg-gray-50/50">
+              <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                <HelpCircle size={20} className="text-blue-600" /> CSV Formatting Rules
+              </h2>
+              <button onClick={() => setShowUploadGuide(false)} className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100 transition"><X size={20}/></button>
+            </div>
+            
+            <div className="p-6 space-y-5 text-sm text-gray-600">
+              <p>To successfully upload students via CSV, please ensure your data matches these exact formats. If a row is invalid, the system will skip it.</p>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="p-4 bg-gray-50 border border-gray-100 rounded-xl">
+                  <span className="font-bold text-gray-800 block mb-1">UID</span>
+                  Must start with 'U' followed by exactly 7 digits.<br/>
+                  <code className="text-xs bg-white px-1.5 py-0.5 rounded border border-gray-200 mt-1 inline-block text-green-600">Valid: U1234567</code>
+                </div>
+                
+                <div className="p-4 bg-gray-50 border border-gray-100 rounded-xl">
+                  <span className="font-bold text-gray-800 block mb-1">Date of Birth (dob)</span>
+                  Must be DD-MM-YYYY or DD/MM/YYYY.<br/>
+                  <code className="text-xs bg-white px-1.5 py-0.5 rounded border border-gray-200 mt-1 inline-block text-green-600">Valid: 15-08-2005</code>
+                </div>
+
+                <div className="p-4 bg-gray-50 border border-gray-100 rounded-xl">
+                  <span className="font-bold text-gray-800 block mb-1">Room (room_no)</span>
+                  Must be a single letter, a dash, and a number.<br/>
+                  <code className="text-xs bg-white px-1.5 py-0.5 rounded border border-gray-200 mt-1 inline-block text-green-600">Valid: A-101, B-22</code>
+                </div>
+
+                <div className="p-4 bg-gray-50 border border-gray-100 rounded-xl">
+                  <span className="font-bold text-gray-800 block mb-1">Batch</span>
+                  Must be in YYYY-YY format.<br/>
+                  <code className="text-xs bg-white px-1.5 py-0.5 rounded border border-gray-200 mt-1 inline-block text-green-600">Valid: 2023-27</code>
+                </div>
+              </div>
+
+              <div className="p-4 bg-blue-50 border border-blue-100 rounded-xl">
+                <span className="font-bold text-blue-800 block mb-2">Allowed Branches (Exact Match)</span>
+                <div className="flex flex-wrap gap-2">
+                  {/* ✨ Dynamically maps your whitelist so it is NEVER outdated! */}
+                  {ALLOWED_BRANCHES.map(branch => (
+                    <span key={branch} className="px-2 py-1 bg-white border border-blue-200 text-blue-700 text-xs font-bold rounded-md shadow-sm">
+                      {branch}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="p-5 border-t border-gray-100 bg-gray-50/50 flex justify-end">
+              <button onClick={() => setShowUploadGuide(false)} className="px-5 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition shadow-sm">
+                Got it
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
+
 
 const DashboardHome = ({setActiveTab}) => {
   const [stats, setStats] = useState({
@@ -1025,12 +1810,16 @@ const MenuTab = () =>{
   const [weeklyMenu, setWeeklyMenu] = useState([]);
   const [catalog, setCatalog] = useState([]);
   const [catalogSearch, setCatalogSearch] = useState('');
+  const [catalogDietFilter, setCatalogDietFilter] = useState('All');
+  const [catalogSort, setCatalogSort] = useState('name');
 // Change the dummy data to empty 24-hour formats
   const [mealTimings, setMealTimings] = useState({
     Breakfast: { start: '00:00', end: '00:00' },
     Lunch: { start: '00:00', end: '00:00' },
     Dinner: { start: '00:00', end: '00:00' }
   });
+  const [uploading, setUploading] = useState(false);
+
   
   // Add a new state for the Time Editor Modal
   const [timeEditModal, setTimeEditModal] = useState(null); // Will hold { meal: 'Breakfast', start: '07:30', end: '09:30' }
@@ -1039,94 +1828,361 @@ const MenuTab = () =>{
   const [ShowCatalogModal, setShowCatalogModal] = useState(false);
   const [assignModalData, setAssignModalData] = useState(null); // Will hold { dateString, mealType } when a grid slot is clicked
   const [showAIModal, setShowAIModal] = useState(false);
+
+  // ✨ NEW: Inline Editing State
+  const [editingDishId, setEditingDishId] = useState(null);
+  const [editDishForm, setEditDishForm] = useState({});
+
+  const [showUploadGuide, setShowUploadGuide] = useState(false);
+  const [showCatalogUploadGuide, setShowCatalogUploadGuide] = useState(false);
+
   const [aiLoading, setAiLoading] = useState(false);
   const [aiPrompt, setAiPrompt] = useState('');
+  const abortControllerRef = useRef(null);
 
   // --- FORM STATES ---
   const [newDish, setNewDish] = useState({ dish_name: '', diet_type: 'Veg', cost: '', effort_score: '' });
   const [selectedDishId, setSelectedDishId] = useState('');
 
   // --- HANDLERS ---
+
+  const handleAssignDish = (e) => {
+    e.preventDefault();
+    if (!selectedDishId) return toast.error("Please select a dish!");
+    
+    // ✨ NEW: The strict 2-item bouncer
+    const existingDishesInSlot = getDishesForSlot(assignModalData.dateString, assignModalData.mealType);
+    if (existingDishesInSlot.length >= 2) {
+      toast.error(`Maximum 2 dishes allowed for ${assignModalData.mealType}.`);
+      return; 
+    }
+
+    // Find the full dish details from the catalog so the UI renders it instantly
+    const dishObj = catalog.find(d => d.id === parseInt(selectedDishId));
+    
+    const newEntry = {
+      schedule_id: `temp_${Date.now()}_${Math.random()}`, 
+      serve_date: assignModalData.dateString,
+      meal_type: assignModalData.mealType,
+      dish_id: dishObj.id,
+      status: 'Draft', 
+      dish_name: dishObj.dish_name,
+      diet_type: dishObj.diet_type,
+      cost: dishObj.cost,
+      effort_score: dishObj.effort_score
+    };
+
+    // Update the UI state instantly, NO DATABASE CALL
+    setWeeklyMenu(prev => [...prev, newEntry]);
+    setAssignModalData(null); 
+    setSelectedDishId(''); 
+  };
+
   const handleAddDish = async (e) => {
     e.preventDefault();
-    try {
-      await axios.post('http://localhost:3001/api/admin/menu-catalog', newDish);
-      setShowCatalogModal(false);
-      setNewDish({ dish_name: '', diet_type: 'Veg', cost: '', effort_score: '' }); // Reset form
-      fetchCatalog(); // Refresh the catalog so the new dish is instantly available
-    } catch (err) {
-      console.error("Error adding dish:", err);
-      alert("Failed to add dish, It may already exist in catalog");
-    }
-  };
-
-  const handleDeleteFromCatalog = async (dishId, dishName) => {
-    if (!window.confirm(`Are you sure you want to permanently delete "${dishName}" from the catalog?`)) return;
-
-    try {
-      await axios.delete(`http://localhost:3001/api/admin/menu-catalog/${dishId}`);
-      alert(`${dishName} deleted successfully.`);
-      fetchCatalog(); // Refresh the list!
-    } catch (err) {
-      if (err.response && err.response.status === 409) {
-        alert(err.response.data.error); // Show the safety warning!
-      } else {
-        alert("Failed to delete dish.");
+    toast.promise(
+      axios.post('http://localhost:3001/api/admin/menu-catalog', newDish),
+      {
+        loading: 'Adding dish to catalog...',
+        success: (res) => {
+          setShowCatalogModal(false);
+          setNewDish({ dish_name: '', diet_type: 'Veg', cost: '', effort_score: '' });
+          fetchCatalog();
+          return res.data.message;
+        },
+        error: (err) => err.response?.data?.error || "Failed to add dish.",
       }
-    }
+    );
   };
 
-  const handleAssignDish = async (e) => {
+  const executeDeleteFromCatalog = async (dishId, dishName) => {
+    toast.promise(
+      axios.delete(`http://localhost:3001/api/admin/menu-catalog/${dishId}`),
+      {
+        loading: 'Deleting dish...',
+        success: `${dishName} permanently removed.`,
+        error: (err) => err.response?.data?.error || "Failed to delete dish."
+      }
+    ).then(() => fetchCatalog());
+  };
+
+  const handleDeleteFromCatalog = (dishId, dishName) => {
+    // ✨ NEW: Check if this dish is currently attached to any schedules!
+    const dish = catalog.find(d => d.id === dishId);
+    const isCurrentlyScheduled = dish && dish.served_meals;
+
+    toast((t) => (
+      <div className="flex flex-col gap-3 min-w-[300px]">
+        <div className="flex items-center gap-2 text-red-600">
+          <Trash2 size={20} />
+          <p className="font-bold text-sm">Confirm Deletion of {dishName}?</p>
+        </div>
+        
+        {/* ✨ DYNAMIC WARNING MESSAGE */}
+        {isCurrentlyScheduled ? (
+          <div className="bg-red-50 p-3 rounded-lg border border-red-200">
+            <p className="text-xs font-bold text-red-700 flex items-center gap-1 mb-1">
+              <AlertTriangle size={14} /> WARNING
+            </p>
+            <p className="text-xs text-red-600 font-medium leading-relaxed">
+              This meal is already approved/assigned as an active menu item. Proceeding might cause Cascade error, Confirm deletion?
+            </p>
+          </div>
+        ) : (
+          <p className="text-xs text-gray-500">This will remove it from your active catalog.</p>
+        )}
+
+        <div className="flex gap-2 justify-end mt-2">
+          <button onClick={() => toast.dismiss(t.id)} className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs font-bold hover:bg-gray-200 transition">Cancel</button>
+          <button onClick={() => { 
+            toast.dismiss(t.id); 
+            executeDeleteFromCatalog(dishId, dishName); 
+          }} className="px-3 py-1.5 bg-red-600 text-white rounded-lg text-xs font-bold hover:bg-red-700 transition shadow-sm">
+            Yes, Proceed
+          </button>
+        </div>
+      </div>
+    ), { id: `delete-dish-${dishId}`, duration: Infinity });
+  };
+   
+  // --- INLINE EDIT LOGIC ---
+  const handleEditClick = (dish) => {
+    setEditingDishId(dish.id);
+    setEditDishForm({ ...dish }); // Load current dish data into the form
+  };
+
+  const handleCancelEdit = () => {
+    setEditingDishId(null);
+    setEditDishForm({});
+  };
+
+  const executeUpdateDish = async (e) => {
     e.preventDefault();
-    if (!selectedDishId) return alert("Please select a dish!");
+    toast.promise(
+      axios.put(`http://localhost:3001/api/admin/menu-catalog/${editingDishId}`, editDishForm),
+      {
+        loading: 'Saving changes...',
+        success: () => {
+          setEditingDishId(null);
+          fetchCatalog(); // Refresh the grid to show updates
+          return 'Dish updated successfully!';
+        },
+        error: (err) => err.response?.data?.error || "Failed to update dish."
+      }
+    );
+  };
+  // --- BULK DELETE CATALOG LOGIC ---
+  const executeBulkDeleteCatalog = async (dishesToDelete) => {
+    toast.promise(
+      Promise.all(dishesToDelete.map(d => axios.delete(`http://localhost:3001/api/admin/menu-catalog/${d.id}`))),
+      {
+        loading: `Deleting ${dishesToDelete.length} dishes...`,
+        success: `Successfully deleted selected dishes!`,
+        error: 'Some dishes could not be deleted because they are currently scheduled on the active menu.'
+      }
+    ).then(() => fetchCatalog());
+  };
+
+  const handleBulkDeleteCatalog = () => {
+    if (filteredCatalog.length === 0) return;
     
-    try {
-      await axios.post('http://localhost:3001/api/admin/daily-menu', {
-        serve_date: assignModalData.dateString,
-        meal_type: assignModalData.mealType,
-        dish_id: selectedDishId
-      });
-      setAssignModalData(null); // Close the modal
-      setSelectedDishId(''); // Reset selection
-      fetchWeeklyMenu(); // Instantly refresh the grid to show the new assignment
-    } catch (err) {
-      console.error("Error scheduling dish:", err);
-      alert("Failed to schedule dish.");
-    }
+    toast((t) => (
+      <div className="flex flex-col gap-3 min-w-[300px]">
+        <div className="flex items-start gap-2 text-red-600">
+          <AlertOctagon size={24} className="shrink-0" />
+          <div>
+            <p className="font-bold text-sm">Delete {filteredCatalog.length} Dishes?</p>
+            <p className="text-xs text-gray-500 mt-1">This will permanently remove all currently filtered dishes from your database.</p>
+          </div>
+        </div>
+        <div className="flex gap-2 justify-end mt-2">
+          <button onClick={() => toast.dismiss(t.id)} className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-sm font-bold hover:bg-gray-200 transition">Cancel</button>
+          <button onClick={() => { 
+            toast.dismiss(t.id); 
+            executeBulkDeleteCatalog(filteredCatalog); 
+          }} className="px-3 py-1.5 bg-red-600 text-white rounded-lg text-sm font-bold hover:bg-red-700 transition shadow-sm">Delete All</button>
+        </div>
+      </div>
+    ), { id: 'bulk-delete-catalog', duration: Infinity });
   };
 
-  const handleRemoveDish = async (scheduleId, dishName) => {
-    // A quick confirmation so they don't accidentally click it
-    if (!window.confirm(`Are you sure you want to remove ${dishName} from this slot?`)) return;
-
-    try {
-      await axios.delete(`http://localhost:3001/api/admin/daily-menu/${scheduleId}`);
-      fetchWeeklyMenu(); // Instantly refresh the grid to show it's gone
-    } catch (err) {
-      console.error("Error removing dish:", err);
-      alert("Failed to remove dish.");
-    }
+  const executeApproveWeek = async (startStr, endStr) => {
+    toast.promise(
+      axios.put('http://localhost:3001/api/admin/weekly-menu/sync', {
+        start_date: startStr,
+        end_date: endStr,
+        menu_items: weeklyMenu
+      }),
+      {
+        loading: 'Syncing to database...',
+        success: "Week's menu officially published!",
+        error: "Failed to publish schedule."
+      }
+    ).then(() => {fetchWeeklyMenu();fetchCatalog();});
   };
 
-  const handleApproveWeek = async () => {
-    // We already have the dates calculated in your weekDays array!
+  const handleApproveWeek = () => {
     const startStr = weekDays[0].dateString;
     const endStr = weekDays[6].dateString;
 
-    if (!window.confirm("Are you sure you want to approve this week's menu? This will make it visible to students.")) return;
-
-    try {
-      await axios.put('http://localhost:3001/api/admin/daily-menu/approve', {
-        start_date: startStr,
-        end_date: endStr
-      });
-      alert("Week's menu approved successfully!");
-      fetchWeeklyMenu(); // Refresh the grid
-    } catch (err) {
-      console.error("Error approving menu:", err);
-      alert("Failed to approve menu.");
-    }
+    toast((t) => (
+      <div className="flex flex-col gap-3 min-w-[300px]">
+        <div className="flex items-start gap-2 text-blue-600">
+          <CheckCircle size={24} className="shrink-0" />
+          <div>
+            <p className="font-bold text-sm">Publish Weekly Schedule?</p>
+            <p className="text-sm text-gray-500 mt-1">This will overwrite the current live menu for {startStr} to {endStr}.</p>
+          </div>
+        </div>
+        <div className="flex gap-2 justify-end mt-2">
+          <button onClick={() => toast.dismiss(t.id)} className="px-4 py-2 bg-gray-100 text-gray-600 rounded-lg text-sm font-bold hover:bg-gray-200 transition">Keep as Draft</button>
+          <button onClick={() => { toast.dismiss(t.id); executeApproveWeek(startStr, endStr); }} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 transition shadow-sm">Publish Now</button>
+        </div>
+      </div>
+    ), { id: 'publish-week', duration: Infinity });
   };
+
+  const handleFileUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setUploading(true);
+    const formData = new FormData();
+    formData.append('file', file);
+
+    toast.promise(
+      axios.post('http://localhost:3001/api/admin/menu-catalog/bulk-upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      }),
+      {
+        loading: 'Importing dishes...',
+        success: (res) => {
+          fetchCatalog();
+          return res.data.message;
+        },
+        error: 'Failed to upload CSV.',
+      }
+    ).finally(() => {
+      setUploading(false);
+      e.target.value = null; 
+    });
+  };
+
+  // --- UPLOAD WEEKLY SCHEDULE CSV ---
+  const handleScheduleCSVUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target.result;
+      const rows = text.split('\n').filter(row => row.trim() !== '');
+      const headers = rows.shift().split(',').map(h => h.trim().toLowerCase());
+
+      const dateIdx = headers.indexOf('serve_date');
+      const mealIdx = headers.indexOf('meal_type');
+      const nameIdx = headers.indexOf('dish_name');
+      const dietIdx = headers.indexOf('diet_type');
+      const costIdx = headers.indexOf('cost');
+      const effortIdx = headers.indexOf('effort_score');
+
+      if (dateIdx === -1 || mealIdx === -1 || nameIdx === -1) {
+        toast.error("CSV must contain 'serve_date', 'meal_type', and 'dish_name'.");
+        return;
+      }
+
+      const uploadedDates = [...new Set(rows.map(rowStr => rowStr.split(',')[dateIdx].trim()))];
+      
+      // ✨ NEW: Figure out exactly what days the Warden is looking at right now
+      const currentVisibleDates = weekDays.map(d => d.dateString);
+
+      const draftMenu = weeklyMenu.filter(m => {
+        const existingDate = m.serve_date.split('T')[0]; 
+        return !uploadedDates.includes(existingDate);
+      });
+
+      let comboErrors = 0;
+      let limitErrors = 0;
+      let newItemsCount = 0;
+      let addedCount = 0;
+      let hiddenCount = 0; // ✨ NEW: Track off-screen meals
+
+      rows.forEach((rowStr, index) => {
+        const row = rowStr.split(',').map(v => v.trim());
+        if (row.length < 3) return;
+
+        const serveDate = row[dateIdx];
+        const mealType = row[mealIdx];
+        const dishName = row[nameIdx];
+        const dietType = dietIdx !== -1 && row[dietIdx] ? row[dietIdx] : 'Veg';
+        const cost = costIdx !== -1 ? (parseInt(row[costIdx]) || 0) : 0;
+        const effortScore = effortIdx !== -1 ? (parseInt(row[effortIdx]) || 5) : 5;
+
+        // 🛡️ GUARDRAILS
+        if (!/(&|\+|\band\b)/i.test(dishName)) {
+          comboErrors++;
+          return;
+        }
+
+        const existingInSlot = draftMenu.filter(m => m.serve_date.split('T')[0] === serveDate && m.meal_type === mealType);
+        if (existingInSlot.length >= 2) {
+          limitErrors++;
+          return;
+        }
+
+        const existingDish = catalog.find(d => d.dish_name.toLowerCase() === dishName.toLowerCase());
+
+        draftMenu.push({
+          schedule_id: `csv_draft_${Date.now()}_${index}`,
+          serve_date: serveDate,
+          meal_type: mealType,
+          dish_id: existingDish ? existingDish.id : null,
+          is_new_creation: !existingDish, 
+          status: 'Draft',
+          is_new_recipe_badge: !existingDish, 
+          dish_name: dishName,
+          diet_type: existingDish ? existingDish.diet_type : dietType,
+          cost: existingDish ? existingDish.cost : cost,
+          effort_score: existingDish ? existingDish.effort_score : effortScore
+        });
+
+        addedCount++;
+        if (!existingDish) newItemsCount++;
+        
+        // ✨ NEW: Did we just schedule a meal for a week the Warden isn't looking at?
+        if (!currentVisibleDates.includes(serveDate)) {
+          hiddenCount++;
+        }
+      });
+
+      setWeeklyMenu(draftMenu);
+
+      // ✨ UPGRADED Dynamic Toast Reporting
+      const visibilityMsg = hiddenCount > 0 
+        ? `\nNote: ${hiddenCount} meals are scheduled for a different week. Navigate to those dates to see them.` 
+        : "";
+
+      if (comboErrors > 0 || limitErrors > 0) {
+        toast.success(
+          `Imported ${addedCount} meals. Found ${newItemsCount} new recipes! ${visibilityMsg}
+           \nBlocked: ${comboErrors} invalid names, ${limitErrors} due to slot limits.`,
+          { duration: 7000 }
+        );
+      } else {
+        toast.success(`Successfully loaded ${addedCount} meals! Found ${newItemsCount} new recipes. ${visibilityMsg}`, { duration: 5000 });
+      }
+    };
+    
+    reader.readAsText(file);
+    e.target.value = null; 
+  };
+  
+  const handleRemoveDish = (scheduleId, dishName) => {
+    // Just filter it out of the local React state, NO DATABASE CALL
+    setWeeklyMenu(prev => prev.filter(dish => dish.schedule_id !== scheduleId));
+  };
+
+  
   // Track the start of the currently viewed week (Defaults to this week's Monday)
   const [weekStart, setWeekStart] = useState(() => {
     const d = new Date();
@@ -1134,6 +2190,49 @@ const MenuTab = () =>{
     const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Adjust when day is Sunday
     return new Date(d.setDate(diff));
   });
+
+  // --- TIME TRAVEL FUNCTIONS ---
+  const handlePrevWeek = () => {
+    setWeekStart(prev => {
+      const d = new Date(prev);
+      d.setDate(d.getDate() - 7);
+      return d;
+    });
+  };
+
+  const handleNextWeek = () => {
+    setWeekStart(prev => {
+      const d = new Date(prev);
+      d.setDate(d.getDate() + 7);
+      return d;
+    });
+  };
+
+  // --- CLEAR CURRENT WEEK (DRAFT) ---
+  const handleClearWeek = () => {
+    if (weeklyMenu.length === 0) {
+      toast.error("The grid is already empty!");
+      return;
+    }
+
+    toast((t) => (
+      <div className="flex flex-col gap-3 min-w-[280px]">
+        <div className="flex items-center gap-2 text-red-600">
+          <Trash2 size={20} />
+          <p className="font-bold text-sm">Clear This Week's Grid?</p>
+        </div>
+        <p className="text-sm text-gray-500">This removes all meals from the screen. It will not affect the live app until you click Publish.</p>
+        <div className="flex gap-2 justify-end mt-2">
+          <button onClick={() => toast.dismiss(t.id)} className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-sm font-bold hover:bg-gray-200 transition">Cancel</button>
+          <button onClick={() => { 
+            toast.dismiss(t.id); 
+            setWeeklyMenu([]); // ✨ Instantly wipes the local grid state!
+            toast.success("Grid cleared! Click Publish to save these changes.");
+          }} className="px-3 py-1.5 bg-red-600 text-white rounded-lg text-sm font-bold hover:bg-red-700 transition">Clear Grid</button>
+        </div>
+      </div>
+    ), { id: 'clear-week', duration: Infinity });
+  };
 
   // Get "Today" formatted exactly like the database (YYYY-MM-DD)
   // For example, today will format as "2026-03-02"
@@ -1207,24 +2306,70 @@ const MenuTab = () =>{
     }
   };
 
-  const ask_ai=async () => {
+  const ask_ai = async () => {
     setAiLoading(true);
+    abortControllerRef.current = new AbortController();
+
     try {
-          const res = await axios.post('http://localhost:3001/api/admin/ai-generate-menu', {
-          start_date: weekDays[0].dateString,
-          end_date: weekDays[6].dateString, 
-          custom_prompt: aiPrompt
-          });       
-          console.log("AI Generated Menu:", res.data.proposed_menu);   
-          // Here you would map the res.data.proposed_menu into your UI grid!
-          alert("Menu generated! Check the console to see the JSON data.");   
-          setShowAIModal(false);
-        } catch (err) {
-            alert(err.response?.data?.error || "AI Generation Failed");
-            } finally {
-                setAiLoading(false);
-              }
+      const res = await axios.post('http://localhost:3001/api/admin/ga-generate-menu', {
+        start_date: weekDays[0].dateString,
+        end_date: weekDays[6].dateString, 
+        custom_prompt: aiPrompt
+      }, {
+        signal: abortControllerRef.current.signal 
+      });       
+      
+      const populatedMenu = res.data.proposed_menu.map((item, index) => {
+        
+        // 🌟 SCENARIO A: The AI invented a brand new dish!
+        if (item.is_new_creation) {
+           return {
+              schedule_id: `temp_new_ai_${Date.now()}_${index}`,
+              serve_date: item.serve_date,
+              meal_type: item.meal_type,
+              dish_id: null, // No DB ID yet!
+              is_new_creation: true, // Tells the backend to insert this on save
+              status: 'AI Draft', 
+              is_new_recipe_badge: true, // Custom UI flag for our special badge
+              dish_name: item.dish_name,
+              diet_type: item.diet_type,
+              cost: item.cost || 0,
+              effort_score: item.effort_score || 5
+           };
+        }
+
+        // 🍔 SCENARIO B: It's an existing dish from the catalog
+        const dishObj = catalog.find(d => d.id === parseInt(item.dish_id));
+        if (!dishObj) return null;
+        
+        return {
+            schedule_id: `temp_ai_${Date.now()}_${index}`,
+            serve_date: item.serve_date,
+            meal_type: item.meal_type,
+            dish_id: dishObj.id,
+            is_new_creation: false,
+            status: 'AI Draft',
+            dish_name: dishObj.dish_name,
+            diet_type: dishObj.diet_type,
+            cost: dishObj.cost,
+            effort_score: dishObj.effort_score
+        };
+      }).filter(Boolean);
+
+      // Overwrite the current week with the AI's draft
+      setWeeklyMenu(populatedMenu);
+      setShowAIModal(false);
+      toast.success("AI draft generated! Review the new recipes and click Publish to lock them in.");      
+    } catch (err) {
+      if (axios.isCancel(err)) {
+        console.log("AI Generation was aborted by the user.");
+      } else {
+        alert(err.response?.data?.error || "AI Generation Failed");
       }
+    } finally {
+      setAiLoading(false);
+    }
+  }
 
   // Helper to make 24hr time look nice in the table header (e.g., 14:30 -> 2:30 PM)
   const format12Hour = (time24) => {
@@ -1236,9 +2381,75 @@ const MenuTab = () =>{
     return `${displayHours}:${m} ${suffix}`;
   };
 
-  const filteredCatalog = catalog.filter(dish => 
-    dish.dish_name.toLowerCase().includes(catalogSearch.toLowerCase())
-  );
+  // 🧮 Automatically calculate totals ONLY for the visible week
+  const weeklyMetrics = useMemo(() => {
+    // ✨ NEW: Figure out which dates are currently on the screen
+    const currentVisibleDates = weekDays.map(d => d.dateString);
+
+    // ✨ NEW: Filter the menu down to ONLY the meals in this specific week
+    const visibleMeals = weeklyMenu.filter(meal => {
+      const mealDate = meal.serve_date.split('T')[0];
+      return currentVisibleDates.includes(mealDate);
+    });
+
+    if (!visibleMeals || visibleMeals.length === 0) {
+      return { totalCost: 0, avgCost: 0, avgEffort: 0, highestEffortDay: "N/A" };
+    }
+
+    let totalC = 0;
+    let totalE = 0;
+    let count = visibleMeals.length;
+    let dailyEffortTracker = {};
+
+    visibleMeals.forEach(meal => {
+      totalC += Number(meal.cost) || 0;
+      totalE += Number(meal.effort_score) || 0;
+      
+      // Track effort per day to find the hardest day for the kitchen
+      const day = meal.serve_date.split('T')[0];
+      if (!dailyEffortTracker[day]) dailyEffortTracker[day] = 0;
+      dailyEffortTracker[day] += Number(meal.effort_score) || 0;
+    });
+
+    // Find the day with the maximum kitchen effort
+    let maxEffort = 0;
+    let hardestDay = "N/A";
+    Object.entries(dailyEffortTracker).forEach(([day, effort]) => {
+        if (effort > maxEffort) {
+            maxEffort = effort;
+            // Convert the date back into a readable Day name (e.g., "Monday")
+            hardestDay = new Date(day).toLocaleDateString('en-US', { weekday: 'long' });
+        }
+    });
+
+    return {
+      totalCost: totalC.toFixed(2),
+      avgCost: (totalC / count).toFixed(2),
+      avgEffort: (totalE / count).toFixed(1),
+      highestEffortDay: hardestDay
+    };
+  }, [weeklyMenu, weekDays]);
+
+  // ✨ UPGRADED: Advanced Filter & Sort Logic
+  const filteredCatalog = useMemo(() => {
+    let result = catalog.filter(dish => 
+      dish.dish_name.toLowerCase().includes(catalogSearch.toLowerCase())
+    );
+
+    if (catalogDietFilter !== 'All') {
+      result = result.filter(dish => dish.diet_type === catalogDietFilter);
+    }
+
+    result.sort((a, b) => {
+      if (catalogSort === 'name') return a.dish_name.localeCompare(b.dish_name);
+      if (catalogSort === 'cost') return b.cost - a.cost; // Highest cost first
+      if (catalogSort === 'effort') return b.effort_score - a.effort_score; // Highest effort first
+      if (catalogSort === 'popularity') return (b.popularity_score || 0) - (a.popularity_score || 0); // Highest popularity first
+      return 0;
+    });
+
+    return result;
+  }, [catalog, catalogSearch, catalogDietFilter, catalogSort]);
 
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
@@ -1246,18 +2457,68 @@ const MenuTab = () =>{
         
         {/* HEADER */}
         <div className="p-6 border-b flex justify-between items-center bg-gray-800 text-white">
-          <h2 className="text-2xl font-bold">Weekly Menu Planner</h2>
-          {/* THE AI BUTTON */}
-          <button 
-            onClick={() => setShowAIModal(true)}
-            className="bg-gradient-to-r from-indigo-500 via-purple-500 to-fuchsia-500 text-white px-4 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:shadow-lg hover:scale-105 transition-all active:scale-95 border border-purple-400/50"
-          >
-            <Sparkles size={18} className="animate-pulse" />
-            AI Auto-Schedule
-          </button>
-          <button className="bg-green-500 hover:bg-green-600 px-4 py-2 rounded shadow transition" onClick={() => setShowCatalogModal(true)}>
-            + Manage Catalog
-          </button>
+          
+          {/* ✨ NEW: Title + Week Navigation Controls */}
+          <div className="flex items-center gap-4">
+            <h2 className="text-2xl font-bold hidden md:block">Weekly Menu Planner</h2>
+            
+            <div className="flex items-center gap-1 bg-gray-700/50 p-1 rounded-lg border border-gray-600">
+              <button onClick={handlePrevWeek} className="p-1.5 hover:bg-gray-600 rounded-md transition" title="Previous Week">
+                <span className="text-lg font-bold leading-none">‹</span>
+              </button>
+              <div className="flex flex-col items-center px-3">
+                <span className="text-xs text-gray-400 font-bold uppercase tracking-wider">Week Of</span>
+                <span className="text-sm font-bold text-blue-300">{weekDays[0].dateString}</span>
+              </div>
+              <button onClick={handleNextWeek} className="p-1.5 hover:bg-gray-600 rounded-md transition" title="Next Week">
+                <span className="text-lg font-bold leading-none">›</span>
+              </button>
+            </div>
+            <button 
+              onClick={handleClearWeek}
+              className="bg-gray-50 hover:bg-red-100 border border-red-200 text-red-600 px-3 py-2.5 rounded-xl font-bold flex items-center gap-2 transition-all text-sm shadow-sm"
+              title="Clear all meals from the grid"
+            >
+              <Trash2 size={16} /> <span className="hidden xl:inline">Clear</span>
+            </button>
+          </div>
+          <div className="flex items-center gap-3">
+            {/* ✨ NEW: Upload CSV Schedule Button */}
+            <div className="flex items-center gap-1.5 ml-2">
+              <button 
+                onClick={() => setShowUploadGuide(true)}
+                className="p-2.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-colors border border-transparent hover:border-blue-100"
+                title="View CSV Formatting Rules"
+              >
+                <HelpCircle size={20} />
+              </button>
+
+              <div className="relative overflow-hidden">
+                <button className="bg-gray-700 hover:bg-gray-600 border border-gray-600 text-white px-4 py-2.5 rounded-xl font-bold flex items-center gap-2 transition-all text-sm shadow-sm">
+                  <Upload size={16} /> <span className="hidden xl:inline">Import Menu</span>
+                </button>
+                <input 
+                  type="file" 
+                  accept=".csv" 
+                  onChange={handleScheduleCSVUpload} 
+                  title="Upload Weekly Schedule CSV"
+                  className="absolute top-0 left-0 w-full h-full opacity-0 cursor-pointer"
+                />
+              </div>
+            </div>
+
+            {/* THE AI BUTTON */}
+            <button 
+              onClick={() => setShowAIModal(true)}
+              className="bg-gradient-to-r from-indigo-500 via-purple-500 to-fuchsia-500 text-white px-4 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:shadow-lg hover:scale-105 transition-all active:scale-95 border border-purple-400/50 text-sm"
+            >
+              <Sparkles size={16} className="animate-pulse" /> AI Auto-Schedule
+            </button>
+
+            <button className="bg-green-500 hover:bg-green-600 px-4 py-2.5 rounded-xl shadow transition text-sm font-bold ml-2" onClick={() => setShowCatalogModal(true)}>
+              + Manage Catalog
+            </button>
+          </div>
         </div>
 
         {/* THE GRID */}
@@ -1330,10 +2591,15 @@ const MenuTab = () =>{
                                 
                                 <div className="flex items-center gap-2 mt-1">
                                   <span className="text-xs opacity-75">{dish.diet_type}</span>
-                                  
-                                  {/* THE NEW STATUS BADGE */}
-                                  <span className={`text-[10px] px-1.5 py-0.5 rounded uppercase tracking-wider font-bold ${dish.status === 'Approved' ? 'bg-blue-100 text-blue-700' : 'bg-yellow-200 text-yellow-800'}`}>
-                                    {dish.status || 'Pending'}
+                                  {/* THE DYNAMIC STATUS BADGE */}
+                                  <span className={`text-[10px] px-1.5 py-0.5 rounded uppercase tracking-wider font-bold ${
+                                    dish.is_new_recipe_badge ? 'bg-fuchsia-100 text-fuchsia-700 border border-fuchsia-200' :
+                                    dish.status === 'AI Draft' ? 'bg-purple-100 text-purple-700 border border-purple-200' :
+                                    dish.status === 'Draft' ? 'bg-orange-100 text-orange-700 border border-orange-200' : 
+                                    dish.status === 'Approved' ? 'bg-blue-100 text-blue-700' : 
+                                    'bg-yellow-200 text-yellow-800'
+                                  }`}>
+                                    {dish.is_new_recipe_badge ? '✨ NEW RECIPE' : dish.status === 'AI Draft' ? '🤖 AI Draft' : dish.status}
                                   </span>
                                 </div>
                                 
@@ -1348,13 +2614,16 @@ const MenuTab = () =>{
                               </div>
                             ))}
 
-                            {/* Always keep the Assign button visible so they can add a 2nd or 3rd dish */}
-                            <button 
-                              onClick={() => setAssignModalData({ dateString: day.dateString, mealType: meal })}
-                              className={`w-full border-2 border-dashed border-gray-300 rounded text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors flex items-center justify-center ${assignedDishes.length > 0 ? 'py-1 text-xs mt-auto' : 'h-full min-h-[60px]'}`}
-                            >
-                              + {assignedDishes.length > 0 ? 'Add Option' : 'Assign'}
-                            </button>
+                            {/* ✨ UPGRADED: Hide the button if they hit the limit of 2 items */}
+                            {assignedDishes.length < 2 && (
+                              <button 
+                                onClick={() => setAssignModalData({ dateString: day.dateString, mealType: meal })}
+                                className={`w-full border-2 border-dashed border-gray-300 rounded text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors flex items-center justify-center ${assignedDishes.length > 0 ? 'py-1 text-xs mt-auto' : 'h-full min-h-[60px]'}`}
+                                title={`Add up to 2 items (${2 - assignedDishes.length} slot(s) remaining)`}
+                              >
+                                + {assignedDishes.length > 0 ? 'Add 2nd Option' : 'Assign'}
+                              </button>
+                            )}
                             
                           </div>
                         </td>
@@ -1389,18 +2658,18 @@ const MenuTab = () =>{
               {/* SECTION 1: ADD NEW DISH FORM */}
               <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
                 <h3 className="font-bold text-gray-700 mb-4 text-sm uppercase tracking-wider flex items-center gap-2">
-                  <span className="bg-blue-100 text-blue-600 p-1 rounded">+</span> Add New Dish
+                  <span className="bg-blue-100 text-blue-600 p-1 rounded">+</span> Add New Combo
                 </h3>
                 <form onSubmit={handleAddDish} className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
                   
                   {/* Row 1: Dish Name (Takes up 2 columns) & Diet Type (Takes 1) */}
                   <div className="md:col-span-2">
-                    <label className="block text-xs font-bold text-gray-500 mb-1">Dish Name</label>
+                    <label className="block text-xs font-bold text-gray-500 mb-1">Combo Name</label>
                     <input 
                       type="text" required
                       value={newDish.dish_name} 
                       onChange={(e) => setNewDish({...newDish, dish_name: e.target.value})}
-                      placeholder="e.g. Kadala Curry" 
+                      placeholder="e.g. Chappathi & Butter Chicken" 
                       className="w-full border border-gray-300 p-2.5 rounded-lg outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
@@ -1443,56 +2712,230 @@ const MenuTab = () =>{
 
                   <div className="flex items-end h-full">
                     <button type="submit" className="w-full bg-blue-600 text-white font-bold py-2.5 rounded-lg hover:bg-blue-700 transition active:scale-95">
-                      Save Dish
+                      Save Meal
                     </button>
                   </div>
                   
                 </form>
-              </div>
+                {/* ✨ NEW: Catalog CSV Upload Section with Guide Button */}
+                <div className="flex items-center gap-2 mt-4 pt-4 border-t border-gray-100">
+                  <button 
+                    type="button"
+                    onClick={() => setShowCatalogUploadGuide(true)}
+                    className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors border border-transparent hover:border-blue-100"
+                    title="View Catalog CSV Formatting Rules"
+                  >
+                    <HelpCircle size={20} />
+                  </button>
 
-              {/* SECTION 2: CURRENT CATALOG LIST */}
-              <div>
-                <div className="flex justify-between items-end mb-4 gap-4">
-                  <h3 className="font-bold text-gray-700 text-sm uppercase tracking-wider whitespace-nowrap">
-                    Current Catalog ({catalog.length})
-                  </h3>
-                  
-                  {/* NEW SEARCH BAR */}
-                  <div className="relative w-full max-w-xs">
-                    <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                    <input 
-                      type="text" 
-                      placeholder="Search dishes..." 
-                      value={catalogSearch}
-                      onChange={(e) => setCatalogSearch(e.target.value)}
-                      className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                    />
+                  <div className="relative overflow-hidden inline-block">
+                      <button type="button" className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-blue-700 disabled:opacity-50 text-sm shadow-sm" disabled={uploading}>
+                        {uploading ? 'Processing...' : 'Bulk Upload Catalog (CSV)'}
+                      </button>
+                      <input 
+                        type="file" 
+                        accept=".csv" 
+                        onChange={handleFileUpload} 
+                        className="absolute top-0 left-0 w-full h-full opacity-0 cursor-pointer"
+                      />
                   </div>
                 </div>
-                {filteredCatalog.length === 0 ? (
-                  <p className="text-center text-gray-500 py-8 bg-white rounded-xl border border-gray-100">Your catalog is empty.</p>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {filteredCatalog.map(dish => (
-                      <div key={dish.id} className="bg-white p-3 rounded-xl border border-gray-200 flex justify-between items-center hover:shadow-sm transition group">
-                        <div className="flex flex-col">
-                          <span className="font-bold text-gray-800">{dish.dish_name}</span>
-                          <span className={`text-[10px] uppercase font-bold w-fit px-2 py-0.5 rounded mt-1 ${
-                            dish.diet_type === 'Veg' ? 'bg-green-100 text-green-700' : 
-                            dish.diet_type === 'Common' ? 'bg-blue-100 text-blue-700' : 
-                            'bg-red-100 text-red-700'
-                          }`}>
-                            {dish.diet_type}
-                          </span>
-                        </div>
-                        <button 
-                          onClick={() => handleDeleteFromCatalog(dish.id, dish.dish_name)}
-                          className="text-red-500 hover:bg-red-50 hover:text-red-700 p-2 rounded-lg text-sm font-bold opacity-0 group-hover:opacity-100 transition focus:opacity-100"
-                          title="Delete from catalog"
-                        >
-                          Delete
-                        </button>
+              </div>
+
+              {/* SECTION 2: ADVANCED CATALOG CONTROL */}
+              <div>   
+                {/* 🎛️ The Advanced Toolbar */}
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-4 gap-4 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+                  
+                  <div className="flex flex-col gap-3 w-full md:w-auto">
+                    <h3 className="font-bold text-gray-800 text-sm uppercase tracking-wider flex items-center gap-2">
+                      Database Controls <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full text-xs">{filteredCatalog.length} items</span>
+                    </h3>
+                    
+                    <div className="flex flex-wrap items-center gap-2">
+                      {/* Search */}
+                      <div className="relative w-full sm:w-48">
+                        <Search size={14} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                        <input 
+                          type="text" 
+                          placeholder="Search..." 
+                          value={catalogSearch}
+                          onChange={(e) => setCatalogSearch(e.target.value)}
+                          className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
+                        />
                       </div>
+
+                      {/* Diet Filter */}
+                      <select 
+                        value={catalogDietFilter}
+                        onChange={(e) => setCatalogDietFilter(e.target.value)}
+                        className="py-1.5 px-3 text-sm border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 cursor-pointer"
+                      >
+                        <option value="All">All Diets</option>
+                        <option value="Veg">Veg</option>
+                        <option value="Non-Veg">Non-Veg</option>
+                        <option value="Common">Common</option>
+                      </select>
+
+                      {/* Sort Dropdown */}
+                      <select 
+                        value={catalogSort}
+                        onChange={(e) => setCatalogSort(e.target.value)}
+                        className="py-1.5 px-3 text-sm border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 cursor-pointer"
+                      >
+                        <option value="name">Sort by: Name</option>
+                        <option value="popularity">Sort by: Popularity ⭐</option>
+                        <option value="cost">Sort by: Cost ₹</option>
+                        <option value="effort">Sort by: Effort ♨</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Bulk Delete Button */}
+                  {filteredCatalog.length > 0 && (
+                    <button 
+                      onClick={handleBulkDeleteCatalog}
+                      className="w-full md:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-red-50 text-red-600 border border-red-200 rounded-lg text-sm font-bold hover:bg-red-100 transition active:scale-95"
+                    >
+                      <Trash2 size={16} /> Delete Filtered
+                    </button>
+                  )}
+                </div>
+
+                {/* 📋 The Dish Grid */}
+                {filteredCatalog.length === 0 ? (
+                  <div className="text-center text-gray-500 py-12 bg-white rounded-xl border border-gray-200 border-dashed">
+                    <Filter size={32} className="mx-auto mb-2 text-gray-300" />
+                    <p className="font-bold">No dishes found.</p>
+                    <p className="text-sm mt-1">Try adjusting your filters.</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 max-h-[50vh] overflow-y-auto pr-2 custom-scrollbar">
+                    {filteredCatalog.map(dish => (
+                      // ✨ Check if this specific dish is in "Edit Mode"
+                      editingDishId === dish.id ? (
+                        
+                        // 🛠️ THE EDIT MODE CARD
+                        <form key={`edit-${dish.id}`} onSubmit={executeUpdateDish} className="bg-blue-50/50 p-4 rounded-xl border-2 border-blue-400 shadow-sm transition-all flex flex-col justify-between">
+                          <div className="space-y-3 mb-3">
+                            <div>
+                              <label className="text-[10px] uppercase font-bold text-blue-600 tracking-wider">Dish Name (Combo)</label>
+                              <input 
+                                type="text" required
+                                value={editDishForm.dish_name} 
+                                onChange={(e) => setEditDishForm({...editDishForm, dish_name: e.target.value})}
+                                className="w-full text-sm font-bold px-3 py-1.5 border border-blue-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 bg-white mt-1 shadow-sm"
+                              />
+                            </div>
+                            
+                            <div className="flex gap-2">
+                              <div className="flex-1">
+                                <label className="text-[10px] uppercase font-bold text-blue-600 tracking-wider">Diet</label>
+                                <select 
+                                  value={editDishForm.diet_type} 
+                                  onChange={(e) => setEditDishForm({...editDishForm, diet_type: e.target.value})}
+                                  className="w-full text-xs px-2 py-1.5 border border-blue-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 bg-white mt-1 shadow-sm"
+                                >
+                                  <option value="Veg">Veg</option>
+                                  <option value="Non-Veg">Non-Veg</option>
+                                  <option value="Common">Common</option>
+                                </select>
+                              </div>
+                              <div className="w-20">
+                                <label className="text-[10px] uppercase font-bold text-blue-600 tracking-wider">Cost (₹)</label>
+                                <input 
+                                  type="number" required min="0"
+                                  value={editDishForm.cost} 
+                                  onChange={(e) => setEditDishForm({...editDishForm, cost: e.target.value})}
+                                  className="w-full text-xs px-2 py-1.5 border border-blue-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 bg-white mt-1 shadow-sm"
+                                />
+                              </div>
+                              <div className="w-20">
+                                <label className="text-[10px] uppercase font-bold text-blue-600 tracking-wider">Effort</label>
+                                <input 
+                                  type="number" required min="1" max="10"
+                                  value={editDishForm.effort_score} 
+                                  onChange={(e) => setEditDishForm({...editDishForm, effort_score: e.target.value})}
+                                  className="w-full text-xs px-2 py-1.5 border border-blue-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 bg-white mt-1 shadow-sm"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                          
+                          <div className="flex justify-end gap-2 border-t border-blue-200 pt-3 mt-auto">
+                            <button type="button" onClick={handleCancelEdit} className="px-3 py-1.5 text-xs font-bold text-gray-500 hover:bg-white hover:text-gray-700 rounded-lg transition shadow-sm border border-transparent hover:border-gray-200">
+                              Cancel
+                            </button>
+                            <button type="submit" className="px-3 py-1.5 text-xs font-bold bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition flex items-center gap-1.5 shadow-sm">
+                              <Save size={14}/> Save
+                            </button>
+                          </div>
+                        </form>
+
+                      ) : (
+
+                        // 👁️ THE VIEW MODE CARD (Original)
+                        <div key={dish.id} className="bg-white p-4 rounded-xl border border-gray-200 hover:border-blue-300 hover:shadow-md transition group flex flex-col justify-between">
+                          
+                          <div className="flex justify-between items-start mb-3">
+                            <div className="pr-4">
+                              <span className="font-bold text-gray-800 leading-tight block">{dish.dish_name}</span>
+                              
+                              <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                                <span className={`inline-block text-[10px] uppercase font-bold px-2 py-0.5 rounded ${
+                                  dish.diet_type === 'Veg' ? 'bg-green-100 text-green-700' : 
+                                  dish.diet_type === 'Common' ? 'bg-blue-100 text-blue-700' : 
+                                  'bg-red-100 text-red-700'
+                                }`}>
+                                  {dish.diet_type}
+                                </span>
+                                
+                                {/* ✨ NEW: The "Active on Menu" Tag */}
+                                {dish.served_meals && (
+                                  <span 
+                                    className="inline-flex items-center gap-1 bg-purple-50 text-purple-700 border border-purple-200 text-[10px] uppercase font-bold px-2 py-0.5 rounded cursor-help"
+                                    title={`Currently scheduled for: ${dish.served_meals}`}
+                                  >
+                                    <Calendar size={10} /> Active Menu
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            
+                            {/* ✨ NEW: Action Button Group (Edit + Delete) */}
+                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity shrink-0">
+                              <button 
+                                onClick={() => handleEditClick(dish)}
+                                className="text-gray-400 hover:bg-blue-50 hover:text-blue-600 p-2 rounded-lg transition"
+                                title="Edit dish"
+                              >
+                                <Edit2 size={16} />
+                              </button>
+                              <button 
+                                onClick={() => handleDeleteFromCatalog(dish.id, dish.dish_name)}
+                                className="text-gray-400 hover:bg-red-50 hover:text-red-600 p-2 rounded-lg transition"
+                                title="Delete dish"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 border-t border-gray-100 pt-3 mt-auto">
+                            <div className="flex items-center gap-1 bg-yellow-50 text-yellow-700 px-2 py-1 rounded text-xs font-bold border border-yellow-100" title="Student Popularity Score">
+                              <Star size={12} className="fill-current"/> 
+                              {dish.popularity_score ? Number(dish.popularity_score).toFixed(1) : 'N/A'}
+                            </div>
+                            <div className="flex items-center gap-1 bg-gray-50 text-gray-600 px-2 py-1 rounded text-xs font-bold border border-gray-200" title="Base Cost">
+                              ₹{dish.cost}
+                            </div>
+                            <div className="flex items-center gap-1 bg-gray-50 text-gray-600 px-2 py-1 rounded text-xs font-bold border border-gray-200" title="Kitchen Effort (1-10)">
+                              ♨ {dish.effort_score}
+                            </div>
+                          </div>
+
+                        </div>
+                      )
                     ))}
                   </div>
                 )}
@@ -1541,7 +2984,13 @@ const MenuTab = () =>{
               {/* Action Buttons */}
               <div className="flex gap-3 pt-2">
                 <button 
-                  onClick={() => setShowAIModal(false)}
+                  onClick={() => {
+                    if (abortControllerRef.current) {
+                      abortControllerRef.current.abort(); // 🛑 Kill the network request!
+                    }
+                    setShowAIModal(false); // Hide the UI
+                    setAiLoading(false);   // Reset the loading spinner
+                  }}
                   className="flex-1 bg-white border-2 border-gray-200 text-gray-600 font-bold py-3 rounded-xl hover:bg-gray-50 transition"
                 >
                   Cancel
@@ -1640,6 +3089,55 @@ const MenuTab = () =>{
           </div>
         </div>
       )}
+
+      {/* --- WEEKLY OPERATIONS SUMMARY --- */}
+      <div className="mt-8 bg-white p-6 rounded-2xl border border-gray-200 shadow-sm flex flex-col md:flex-row items-center justify-between gap-6 animate-fade-in">
+        
+        <div>
+          <h3 className="font-bold text-gray-800 text-lg">Weekly Operations Brief</h3>
+          <p className="text-xs text-gray-500 mt-1">Estimated metrics per student for the selected week.</p>
+        </div>
+
+        <div className="flex flex-wrap gap-4">
+          {/* Budget Metric */}
+          <div className="bg-green-50 px-4 py-3 rounded-xl border border-green-100 flex items-center gap-4 min-w-[160px]">
+             <div className="bg-green-200 text-green-700 p-2 rounded-lg font-black text-xl">₹</div>
+             <div>
+               <p className="text-[10px] uppercase font-bold text-green-600 tracking-wider">Total Cost</p>
+               <p className="font-black text-green-900 text-lg">₹{weeklyMetrics.totalCost}</p>
+             </div>
+          </div>
+          
+          {/* Avg. Budget Metric */}
+          <div className="bg-blue-50 px-4 py-3 rounded-xl border border-blue-100 flex items-center gap-3 flex-1 min-w-[140px]">
+             <div className="bg-blue-200 text-blue-700 p-2 rounded-lg font-black text-lg">⚖</div>
+             <div>
+               <p className="text-[10px] uppercase font-bold text-blue-600 tracking-wider">Avg Cost/Meal</p>
+               <p className="font-black text-blue-900 text-lg">₹{weeklyMetrics.avgCost}</p>
+             </div>
+          </div>
+
+          {/* Effort Metric */}
+          <div className="bg-orange-50 px-4 py-3 rounded-xl border border-orange-100 flex items-center gap-4 min-w-[160px]">
+             <div className="bg-orange-200 text-orange-700 p-2 rounded-lg font-black text-xl">♨</div>
+             <div>
+               <p className="text-[10px] uppercase font-bold text-orange-600 tracking-wider">Avg Labor Effort</p>
+               <p className="font-black text-orange-900 text-lg">{weeklyMetrics.avgEffort} / 10</p>
+             </div>
+          </div>
+
+          {/* Warning Metric */}
+          <div className="bg-red-50 px-4 py-3 rounded-xl border border-red-100 flex items-center gap-4 min-w-[160px]">
+             <div className="bg-red-200 text-red-700 p-2 rounded-lg font-black text-xl">⚠</div>
+             <div>
+               <p className="text-[10px] uppercase font-bold text-red-600 tracking-wider">Hardest Shift</p>
+               <p className="font-black text-red-900 text-lg">{weeklyMetrics.highestEffortDay}</p>
+             </div>
+          </div>
+        </div>
+        
+      </div>
+
       <div className="p-4 border-t bg-gray-50 flex justify-between items-center">
           <p className="text-sm text-gray-500">
             Click approve to publish this week's menu to the Student App.
@@ -1652,6 +3150,126 @@ const MenuTab = () =>{
           </button>
         </div>
       </div>
+      {/* ✨ NEW: CSV UPLOAD GUIDE MODAL */}
+      {showUploadGuide && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden">
+            <div className="flex justify-between items-center p-5 border-b border-gray-100 bg-gray-50/50">
+              <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                <HelpCircle size={20} className="text-blue-600" /> Menu CSV Formatting Rules
+              </h2>
+              <button onClick={() => setShowUploadGuide(false)} className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100 transition"><X size={20}/></button>
+            </div>
+            
+            <div className="p-6 space-y-5 text-sm text-gray-600 max-h-[70vh] overflow-y-auto">
+              <p>To successfully upload a weekly menu schedule, your CSV must include the following headers: <b className="text-gray-800">serve_date, meal_type, dish_name, diet_type, cost, effort_score</b>.</p>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="p-4 bg-gray-50 border border-gray-100 rounded-xl">
+                  <span className="font-bold text-gray-800 block mb-1">Dish Name (Combo Rule)</span>
+                  Must be a combo meal! Must contain <b>&</b>, <b>+</b>, or the exact word <b>and</b>.<br/>
+                  <code className="text-xs bg-white px-1.5 py-0.5 rounded border border-gray-200 mt-1 inline-block text-green-600">Valid: Rice & Fish Curry</code><br/>
+                  <code className="text-xs bg-white px-1.5 py-0.5 rounded border border-gray-200 mt-1 inline-block text-red-500">Note: use '+','&','and' to seperate items in a meal</code>
+                </div>
+                
+                <div className="p-4 bg-gray-50 border border-gray-100 rounded-xl">
+                  <span className="font-bold text-gray-800 block mb-1">Serve Date (serve_date)</span>
+                  Must match the standard database date format.<br/>
+                  <code className="text-xs bg-white px-1.5 py-0.5 rounded border border-gray-200 mt-1 inline-block text-green-600">Valid: YYYY-MM-DD (e.g., 2026-03-12)</code>
+                </div>
+
+                <div className="p-4 bg-gray-50 border border-gray-100 rounded-xl">
+                  <span className="font-bold text-gray-800 block mb-1">Meal Type (meal_type)</span>
+                  Must be exactly one of the three daily slots.<br/>
+                  <code className="text-xs bg-white px-1.5 py-0.5 rounded border border-gray-200 mt-1 inline-block text-gray-800 font-bold">Breakfast, Lunch, Dinner</code>
+                </div>
+
+                <div className="p-4 bg-gray-50 border border-gray-100 rounded-xl">
+                  <span className="font-bold text-gray-800 block mb-1">Item Limit per Meal</span>
+                  You can schedule a maximum of <b>2 items</b> per meal type per day (e.g., 1 Veg + 1 Non-Veg). Extras will be rejected.
+                </div>
+
+                <div className="p-4 bg-gray-50 border border-gray-100 rounded-xl">
+                  <span className="font-bold text-gray-800 block mb-1">Diet Type (diet_type)</span>
+                  Optional fallback. Must be exactly:<br/>
+                  <code className="text-xs bg-white px-1.5 py-0.5 rounded border border-gray-200 mt-1 inline-block text-gray-800 font-bold">Veg, Non-Veg, or Common</code>
+                </div>
+
+                <div className="p-4 bg-gray-50 border border-gray-100 rounded-xl">
+                  <span className="font-bold text-gray-800 block mb-1">Kitchen Stats</span>
+                  <b>cost</b>: A whole number (e.g., 45)<br/>
+                  <b>effort_score</b>: A number from 1 to 10.
+                </div>
+              </div>
+
+              <div className="p-4 bg-purple-50 border border-purple-100 rounded-xl">
+                <span className="font-bold text-purple-800 block mb-2 flex items-center gap-2"><Sparkles size={16}/> Auto-Catalog Creation</span>
+                <p className="text-purple-700">If you include a <code className="bg-white px-1 rounded text-purple-800 font-bold border border-purple-200">dish_name</code> that isn't in your existing catalog, the system will tag it as a <b>✨ NEW RECIPE</b> draft. When you click Publish, it will automatically be minted into your permanent catalog!</p>
+              </div>
+            </div>
+
+            <div className="p-5 border-t border-gray-100 bg-gray-50/50 flex justify-end">
+              <button onClick={() => setShowUploadGuide(false)} className="px-5 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition shadow-sm">
+                Got it
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ✨ NEW: CATALOG CSV UPLOAD GUIDE MODAL */}
+      {showCatalogUploadGuide && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden animate-slide-up">
+            <div className="flex justify-between items-center p-5 border-b border-gray-100 bg-gray-50/50">
+              <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                <HelpCircle size={20} className="text-blue-600" /> Catalog CSV Formatting Rules
+              </h2>
+              <button onClick={() => setShowCatalogUploadGuide(false)} className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100 transition"><X size={20}/></button>
+            </div>
+            
+            <div className="p-6 space-y-5 text-sm text-gray-600 max-h-[70vh] overflow-y-auto">
+              <p>To bulk-import dishes directly into your master catalog, your CSV must include these exactly spelled headers: <b className="text-gray-800">dish_name, diet_type, cost, effort_score</b>.</p>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="p-4 bg-gray-50 border border-gray-100 rounded-xl">
+                  <span className="font-bold text-gray-800 block mb-1">Dish Name (Combo Rule)</span>
+                  Must be a combo meal! Must contain <b>&</b>, <b>+</b>, or the exact word <b>and</b>.<br/>
+                  <code className="text-xs bg-white px-1.5 py-0.5 rounded border border-gray-200 mt-1 inline-block text-green-600">Valid: Rice & Fish Curry</code>
+                </div>
+
+                <div className="p-4 bg-gray-50 border border-gray-100 rounded-xl">
+                  <span className="font-bold text-gray-800 block mb-1">Diet Type (diet_type)</span>
+                  Must be exactly one of the following:<br/>
+                  <code className="text-xs bg-white px-1.5 py-0.5 rounded border border-gray-200 mt-1 inline-block text-gray-800 font-bold">Veg, Non-Veg, Common</code>
+                </div>
+
+                <div className="p-4 bg-gray-50 border border-gray-100 rounded-xl">
+                  <span className="font-bold text-gray-800 block mb-1">Base Cost (cost)</span>
+                  Must be a number indicating the raw cost per plate. Defaults to 0 if left blank.<br/>
+                  <code className="text-xs bg-white px-1.5 py-0.5 rounded border border-gray-200 mt-1 inline-block text-green-600">Valid: 45</code>
+                </div>
+
+                <div className="p-4 bg-gray-50 border border-gray-100 rounded-xl">
+                  <span className="font-bold text-gray-800 block mb-1">Kitchen Effort (effort_score)</span>
+                  A number from 1 to 10 indicating how hard it is to cook. Defaults to 5 if left blank.<br/>
+                  <code className="text-xs bg-white px-1.5 py-0.5 rounded border border-gray-200 mt-1 inline-block text-green-600">Valid: 6</code>
+                </div>
+              </div>
+
+              <div className="p-4 bg-blue-50 border border-blue-100 rounded-xl">
+                <span className="font-bold text-blue-800 block mb-2 flex items-center gap-2"><CheckCircle size={16}/> Duplicate Prevention</span>
+                <p className="text-blue-700">If a dish with the exact same name already exists in your catalog, the system will silently skip it to prevent database errors.</p>
+              </div>
+            </div>
+
+            <div className="p-5 border-t border-gray-100 bg-gray-50/50 flex justify-end">
+              <button onClick={() => setShowCatalogUploadGuide(false)} className="px-5 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition shadow-sm">
+                Got it
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -1660,6 +3278,7 @@ const MessReviewsTab = () => {
   const [allReviews, setAllReviews] = useState([]);
   const [catalog, setCatalog] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [isSyncingMath, setIsSyncingMath] = useState(false);
 
   // AI State
   const [aiSummary, setAiSummary] = useState('');
@@ -1677,16 +3296,16 @@ const MessReviewsTab = () => {
 
   const fetchDashboardData = async () => {
     try {
-      // Fetch both Reviews and the Menu Catalog for the Bayesian Scores!
       const [revRes, catRes] = await Promise.all([
         axios.get('http://localhost:3001/api/admin/mess-reviews'),
         axios.get('http://localhost:3001/api/admin/menu-catalog')
       ]);
       setAllReviews(revRes.data);
       setCatalog(catRes.data);
-      setLoading(false);
     } catch (err) {
       console.error("Failed to fetch dashboard data", err);
+      toast.error("Failed to fetch dashboard data."); // ✨ Replaced console error with Toast
+    } finally {
       setLoading(false);
     }
   };
@@ -1728,21 +3347,18 @@ const MessReviewsTab = () => {
     });
 
     // 4. Calculate Bayesian Leaderboards (from Catalog)
-    // NEW: Filter the catalog based on the selected Meal Type dropdown!
     let applicableCatalog = catalog;
     
     if (filterMeal !== 'All') {
       applicableCatalog = catalog.filter(dish => 
-        // If it has never been served, it won't have served_meals, so we safely ignore it
         dish.served_meals && dish.served_meals.includes(filterMeal)
       );
     }
 
-    // Sort the newly filtered list
     const sortedCatalog = [...applicableCatalog].sort((a, b) => Number(b.popularity_score) - Number(a.popularity_score));
     
     const topB = sortedCatalog.slice(0, 3);
-    const bottomB = sortedCatalog.slice(-3).reverse(); // Reverse so absolute worst is first
+    const bottomB = sortedCatalog.slice(-3).reverse(); 
 
     const top = Object.entries(issueCounts)
       .map(([name, data]) => ({ name, count: data.count, tags: [...new Set(data.tags)] }))
@@ -1758,20 +3374,45 @@ const MessReviewsTab = () => {
     };
   }, [allReviews, catalog, filterMeal, filterDiet, filterRating, filterDate]);
 
-  const handleGenerateInsights = async () => {
-    if (filteredReviews.length === 0) return alert("No reviews to analyze!");
+  // ✨ UPGRADED: AI Insights with Toast Promise
+  const handleGenerateInsights = () => {
+    if (filteredReviews.length === 0) {
+      toast.error("No reviews to analyze!");
+      return;
+    }
     setGeneratingAI(true);
-    try {
-      const res = await axios.post('http://localhost:3001/api/admin/generate-insights', {
+    
+    toast.promise(
+      axios.post('http://localhost:3001/api/admin/generate-insights', {
         reviews: filteredReviews,
         stats: stats
-      });
-      setAiSummary(res.data.summary);
-    } catch (err) {
-      alert("Failed to generate AI insights.");
-    } finally {
-      setGeneratingAI(false);
-    }
+      }),
+      {
+        loading: 'Gemini is analyzing reviews...',
+        success: (res) => {
+          setAiSummary(res.data.summary);
+          return "Insights generated!";
+        },
+        error: "Failed to generate AI insights."
+      }
+    ).finally(() => setGeneratingAI(false));
+  };
+
+  // ✨ UPGRADED: Math Sync with Toast Promise & Auto-Refresh
+  const handleForceMathSync = () => {
+    setIsSyncingMath(true);
+    
+    toast.promise(
+      axios.get('http://localhost:3001/api/admin/force-popularity-sync'),
+      {
+        loading: 'Recalculating Bayesian ratings...',
+        success: (res) => {
+          fetchDashboardData(); // Instantly refresh the leaderboard data!
+          return res.data.message || "Math Complete!";
+        },
+        error: "Failed to run the math engine."
+      }
+    ).finally(() => setIsSyncingMath(false));
   };
 
   const formatDate = (dateString) => {
@@ -1854,10 +3495,29 @@ const MessReviewsTab = () => {
           
           {/* COL 1: The Bayesian Leaderboard */}
           <div className="bg-white rounded-2xl shadow-sm p-6 border border-gray-100 flex flex-col gap-4">
-            <h3 className="font-bold text-gray-800 flex items-center gap-2 text-sm uppercase tracking-wider">
-              <Star size={18} className="text-yellow-500"/> Bayesian Rankings
-            </h3>
             
+            <div className="flex justify-between items-center">
+              <h3 className="font-bold text-gray-800 flex items-center gap-2 text-sm uppercase tracking-wider">
+                <Star size={18} className="text-yellow-500"/> Meal Rankings
+              </h3>
+              
+              <button 
+                onClick={handleForceMathSync} 
+                disabled={isSyncingMath}
+                className="bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 hover:border-indigo-300 px-2 py-1 rounded text-xs font-bold transition-all active:scale-95 flex items-center gap-1.5 disabled:opacity-70 shadow-sm"
+              >
+                {isSyncingMath ? (
+                  <>
+                    <span className="animate-spin text-[10px]">⚙️</span> Syncing...
+                  </>
+                ) : (
+                  <>
+                    <span className="text-[10px]">🧮</span> Sync
+                  </>
+                )}
+              </button>
+            </div>
+
             <div className="space-y-2">
               <p className="text-xs font-bold text-gray-400 mb-1">🔥 ALL-TIME BEST</p>
               {topBayesian.map((dish, i) => (
@@ -1877,9 +3537,10 @@ const MessReviewsTab = () => {
                 </div>
               ))}
             </div>
+            
           </div>
 
-          {/* COL 2: Top Complained (Filtered Context) */}
+          {/* COL 2: Top Complained */}
           <div className="bg-white rounded-2xl shadow-sm p-6 border border-gray-100">
             <h3 className="font-bold text-gray-800 flex items-center gap-2 text-sm uppercase tracking-wider mb-4">
               <AlertOctagon size={18} className="text-orange-500"/> High Alert (Current Filter)
@@ -1941,7 +3602,7 @@ const MessReviewsTab = () => {
           </div>
         </div>
 
-        {/* ROW 4: REVIEW FEED (Same as before, visually tightened) */}
+        {/* ROW 4: REVIEW FEED */}
         <div>
           <h3 className="font-bold text-gray-800 mb-4 text-xl">Review Logs ({filteredReviews.length})</h3>
           {filteredReviews.length === 0 ? (
@@ -1952,11 +3613,18 @@ const MessReviewsTab = () => {
                 <div key={review.id} className={`bg-white rounded-2xl shadow-sm overflow-hidden flex flex-col border border-gray-100 hover:shadow-md transition relative ${review.rating <= 2 ? 'ring-2 ring-red-400/50' : review.rating === 3 ? 'border-t-4 border-t-yellow-400' : 'border-t-4 border-t-green-400'}`}>
                   
                   <div className="p-4 bg-gray-50 border-b flex justify-between items-start">
-                    <div>
+                    <div className="pr-2">
                       <h4 className="font-bold text-gray-800">{review.meal_type}</h4>
-                      <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">{formatDate(review.serve_date)} • UID: {review.uid}</p>
+                      
+                      <p className="text-xs font-bold text-blue-600 mt-0.5 mb-1.5 leading-tight">
+                        🍽️ {review.served_dishes || "Menu data unavailable"}
+                      </p>
+                      
+                      <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">
+                        {formatDate(review.serve_date)} • <span className="bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded">Anonymous</span>
+                      </p>
                     </div>
-                    <span className={`text-[10px] uppercase tracking-wider font-bold px-2 py-1 rounded ${review.diet_type === 'Veg' ? 'bg-green-100 text-green-700' : review.diet_type === 'Common' ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700'}`}>{review.diet_type}</span>
+                    <span className={`text-[10px] uppercase tracking-wider font-bold px-2 py-1 rounded shrink-0 ${review.diet_type === 'Veg' ? 'bg-green-100 text-green-700' : review.diet_type === 'Common' ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700'}`}>{review.diet_type}</span>
                   </div>
 
                   <div className="p-5 flex-grow flex flex-col gap-4">
@@ -2000,7 +3668,6 @@ const MessReviewsTab = () => {
   );
 }
 
-
 // Main layout
 function WardenDashboard() {
   const [activeTab, setActiveTab] = useState('home');
@@ -2010,7 +3677,7 @@ function WardenDashboard() {
     { id: 'home', label: 'Home', icon: <Home size={20} /> },
     { id: 'mess', label: 'Mess Reviews', icon: <ClipboardList size={20} /> },
     { id: 'menu', label: 'Menu Management', icon: <Utensils size={20} /> },
-    { id: 'overnight', label: 'Overnight Stay', icon: <Moon size={20} /> },
+    { id: 'overnight', label: 'Overnight Logs', icon: <Moon size={20} /> },
     { id: 'grievances', label: 'Grievances', icon: <AlertCircle size={20} /> },
     { id: 'students', label: 'Student Management', icon: <Users size={20} /> },
   ];
