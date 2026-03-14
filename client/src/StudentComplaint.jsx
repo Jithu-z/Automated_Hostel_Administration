@@ -35,7 +35,7 @@ function StudentComplaint() {
   }, []);
 
   const fetchHistory = () => {
-    axios.get(`http://10.0.8.126:3001/api/student/grievances/${uid}`)
+    axios.get(`http://10.234.199.171:3001/api/student/grievances/${uid}`)
       .then(res => {
         setComplaints(res.data);
         if (res.data.length === 0) setView('form');
@@ -54,7 +54,7 @@ function StudentComplaint() {
     setComplaints(updated);
 
     try {
-      await axios.put(`http://10.0.8.126:3001/api/student/grievances/acknowledge/${id}`);
+      await axios.put(`http://10.234.199.171:3001/api/student/grievances/acknowledge/${id}`);
     } catch (err) {
       console.error("Failed to acknowledge");
     }
@@ -106,7 +106,7 @@ function StudentComplaint() {
     }
 
     try {
-      await axios.post('http://10.0.8.126:3001/api/student/grievances', data);
+      await axios.post('http://10.234.199.171:3001/api/student/grievances', data);
       setStatus('success');
       setFormData({ category: 'Electrical', room_no: user.room_no?user.room_no:'', description: '' });
       clearFile();
@@ -144,7 +144,7 @@ function StudentComplaint() {
   const checkStatus = async () => {
       try {
         // Hitting your existing gatepass API!
-        const res = await axios.get(`http://10.0.8.126:3001/api/gate/status/${uid}`);
+        const res = await axios.get(`http://10.234.199.171:3001/api/gate/status/${uid}`);
         setHostelStatus(res.data.status); // Will be 'in' or 'out'
       } catch (err) {
         console.error("Failed to fetch campus status", err);
@@ -250,7 +250,7 @@ function StudentComplaint() {
                           {c.img_url.endsWith('.mp4') || c.img_url.endsWith('.webm') ? (
                              <FileVideo className="text-gray-400" />
                           ) : (
-                             <img src={`http://10.0.8.126:3001${c.img_url}`} alt="proof" className="w-full h-full object-cover" />
+                             <img src={`http://10.234.199.171:3001${c.img_url}`} alt="proof" className="w-full h-full object-cover" />
                           )}
                        </div>
                     </div>

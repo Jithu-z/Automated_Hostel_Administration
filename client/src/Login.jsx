@@ -15,7 +15,7 @@ function Login({ setUser }) {
     setError(''); // Clear previous errors
 
     try {
-      const res = await axios.post('http://10.0.8.126:3001/api/auth/login', {
+      const res = await axios.post('http://10.234.199.171:3001/api/auth/login', {
         uid,
         password
       });

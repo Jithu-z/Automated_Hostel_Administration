@@ -1,0 +1,69 @@
+app.post('/api/admin/ga-generate-menu', async (req, res) => {
+    const { start_date, end_date, custom_prompt } = req.body;
+
+    if (!start_date) return res.status(400).json({ error: "Start date is required." });
+
+    try {
+        // 1. Fetch Catalog
+        const [catalog] = await db.promise().query("SELECT id, dish_name, diet_type, cost, effort_score, popularity_score FROM menu_catalog");
+        
+        // 2. Python Runs First (Mathematical Draft)
+        const pythonRes = await axios.post('http://localhost:5000/generate-menu', { catalog, start_date });
+        const pythonDraft = pythonRes.data.proposed_menu;
+
+        // 3. Gemini Runs Second (Audit & Apply Your Rules)
+        const systemPrompt = `You are a Kerala Hostel Mess Manager. 
+        Algorithm Draft: ${JSON.stringify(pythonDraft)}
+        Full Catalog: ${JSON.stringify(catalog)}
+
+        Audit and finalize the draft menu. You MUST fix any culinary errors (e.g., Rice/Chicken for Breakfast). 
+        If you replace a dish, you MUST update both the 'dish_name' and 'dish_id' from the Catalog.
+
+        STRICT RULES:
+        1. Dates between ${start_date} and ${end_date} must have Breakfast, Lunch, and Dinner.
+        2. Every meal MUST have one Veg/Common option AND one Non-Veg option (unless Friday/Custom says otherwise).
+        3. Balance cost and effort score.
+        4. No exact repeat meals two days in a row.
+        5. Prioritize high popularity_score items.
+        6. Warden Instruction: "${custom_prompt || 'Balance cost and nutrition.'}"
+
+        Return ONLY the finalized array of objects as raw JSON. No markdown.`;
+
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+        
+        // ✨ ENTERPRISE RETRY LOGIC (Protects against 503 Service Unavailable)
+        const delay = (ms) => new Promise(res => setTimeout(res, ms));
+        let result;
+        const maxRetries = 3;
+
+        for (let i = 0; i < maxRetries; i++) {
+            try {
+                result = await model.generateContent(systemPrompt);
+                break; // If successful, break out of the loop instantly!
+            } catch (error) {
+                // If Google is busy (503) and we have retries left...
+                if (error.status === 503 && i < maxRetries - 1) {
+                    const waitTime = i + 2; // Waits 2s, then 3s...
+                    console.warn(`⚠️ [AI Pipeline] Gemini API busy. Retrying in ${waitTime} seconds... (Attempt ${i + 1}/${maxRetries})`);
+                    await delay(waitTime * 1000);
+                } else {
+                    // If it's a different error, or we ran out of retries, throw it to the outer catch block
+                    throw error;
+                }
+            }
+        }
+        
+        // --- Bulletproof Extraction ---
+        let aiText = result.response.text();
+        const start = aiText.indexOf('['), end = aiText.lastIndexOf(']');
+        if (start !== -1 && end !== -1) aiText = aiText.substring(start, end + 1);
+        aiText = aiText.replace(/[\x00-\x1F\x7F-\x9F]/g, "");
+        
+        const finalMenu = JSON.parse(aiText);
+        res.json({ success: true, proposed_menu: finalMenu });
+
+    } catch (err) {
+        console.error("❌ Hybrid AI Pipeline Error:", err.message || err);
+        res.status(500).json({ error: "AI Pipeline failed to generate menu after multiple attempts. Please try again." });
+    }
+});

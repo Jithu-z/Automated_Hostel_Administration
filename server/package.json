@@ -13,12 +13,15 @@
   "type": "commonjs",
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
+    "axios": "^1.13.6",
     "cors": "^2.8.5",
+    "csv-parser": "^3.2.0",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
     "multer": "^2.0.2",
     "mysql2": "^3.16.1",
     "node-cron": "^4.2.1",
-    "nodemon": "^3.1.11"
+    "nodemon": "^3.1.11",
+    "react-hot-toast": "^2.6.0"
   }
 }

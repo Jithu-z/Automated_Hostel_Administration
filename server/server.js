@@ -1,8 +1,11 @@
 const express = require('express');
 const mysql = require('mysql2');
 const cors = require('cors');
+const axios = require('axios');
 const app = express();
 const multer = require('multer');
+const csv = require('csv-parser');
+const { Readable } = require('stream');
 const path = require('path');
 const fs = require('fs');
 const cron = require('node-cron');
@@ -45,51 +48,89 @@ cron.schedule('0 2 1 * *', () => {
         }
     });
 });
-// Run every night at 2:00 AM to calculate Bayesian Popularity
-cron.schedule('0 2 * * *', () => {
-    console.log("🧮 Running Nightly Bayesian Popularity Calculation...");
+// Run every night at 2:00 AM to calculate Bayesian Popularity + Flag Penalties
+cron.schedule('0 2 * * *', async () => {
+    console.log("🧮 CRON: Running Nightly Math Engine (Bayesian + Penalties)...");
 
-    // 1. Get all dishes and their reviews
-    const fetchReviewsSql = `
-        SELECT 
-            mc.id AS dish_id,
-            COUNT(mr.id) AS real_votes,
-            COALESCE(AVG(mr.rating), 0) AS real_avg
-        FROM menu_catalog mc
-        LEFT JOIN daily_menu dm ON mc.id = dm.dish_id
-        LEFT JOIN mess_reviews mr 
-            ON dm.serve_date = mr.serve_date 
-            AND dm.meal_type = mr.meal_type
-            AND (mc.diet_type = mr.diet_type OR mc.diet_type = 'Common')
-        GROUP BY mc.id
-    `;
+    try {
+        const fetchReviewsSql = `
+            SELECT 
+                mc.id AS dish_id,
+                mc.dish_name,
+                COUNT(mr.id) AS real_votes,
+                COALESCE(AVG(mr.rating), 0) AS real_avg
+            FROM menu_catalog mc
+            LEFT JOIN daily_menu dm ON mc.id = dm.dish_id
+            LEFT JOIN mess_reviews mr 
+                ON dm.serve_date = mr.serve_date 
+                AND dm.meal_type = mr.meal_type
+                AND (mc.diet_type = mr.diet_type OR mc.diet_type = 'Common')
+            GROUP BY mc.id
+        `;
 
-    db.query(fetchReviewsSql, (err, dishes) => {
-        if (err) return console.error("❌ Failed to fetch reviews for math:", err);
+        const fetchIssuesSql = `SELECT dish_issues FROM mess_reviews WHERE dish_issues IS NOT NULL AND dish_issues != '{}'`;
 
-        // 2. The Bayesian Constants you defined
-        const C = 10;   // Dummy votes
-        const m = 3.5;  // Baseline score
+        const [dishes] = await db.promise().query(fetchReviewsSql);
+        const [issues] = await db.promise().query(fetchIssuesSql);
 
-        // 3. Calculate and Update each dish
+        if (dishes.length === 0) return console.log("🧮 CRON: No dishes to update.");
+
+        const flagDictionary = {};
+        issues.forEach(row => {
+            try {
+                const parsed = typeof row.dish_issues === 'string' ? JSON.parse(row.dish_issues) : row.dish_issues;
+                Object.entries(parsed).forEach(([dishName, tags]) => {
+                    if (!flagDictionary[dishName]) flagDictionary[dishName] = 0;
+                    flagDictionary[dishName] += tags.length; 
+                });
+            } catch (e) {}
+        });
+
+        const splitDishName = (name) => {
+            if (!name) return [];
+            return name.split(/ \+ | & | and |, /i).map(s => s.trim()).filter(Boolean);
+        };
+
+        const C = 10;   
+        const m = 3.5;  
+        const PENALTY_PER_FLAG = 0.15; 
+        let completedUpdates = 0; 
+
         dishes.forEach(dish => {
-            // Your exact formula translated to code:
             const realSum = dish.real_votes * dish.real_avg;
             const dummySum = C * m;
             const totalVotes = dish.real_votes + C;
             
-            // Calculate and round to 2 decimal places
-            const finalScore = ((realSum + dummySum) / totalVotes).toFixed(2);
+            let score = (realSum + dummySum) / totalVotes;
 
-            // 4. Save it back to the catalog
+            const subItems = splitDishName(dish.dish_name);
+            let totalFlagsForDish = 0;
+            subItems.forEach(subItem => {
+                if (flagDictionary[subItem]) totalFlagsForDish += flagDictionary[subItem];
+            });
+
+            const totalPenalty = totalFlagsForDish * PENALTY_PER_FLAG;
+            score = score - totalPenalty;
+
+            if (score < 1.0) score = 1.0;
+            if (score > 5.0) score = 5.0;
+
+            const finalScore = score.toFixed(2);
+
             const updateSql = `UPDATE menu_catalog SET popularity_score = ? WHERE id = ?`;
             db.query(updateSql, [finalScore, dish.dish_id], (updateErr) => {
-                if (updateErr) console.error(`❌ Failed to update dish ${dish.dish_id}`);
+                if (updateErr) console.error(`❌ CRON: Failed to update dish ${dish.dish_id}`);
+                
+                completedUpdates++;
+                if (completedUpdates === dishes.length) {
+                    console.log("✅ CRON: All dishes updated with Penalty-Adjusted scores!");
+                }
             });
         });
-        
-        console.log("✅ All dishes updated with true Bayesian scores!");
-    });
+
+    } catch (err) {
+        console.error("❌ CRON Math Engine Error:", err);
+    }
 });
 
 
@@ -110,6 +151,8 @@ const storage = multer.diskStorage({
     }
 });
 const upload = multer({ storage: storage });
+const uploadCsv = multer({ storage: multer.memoryStorage() });
+
 // 3. Serve the Uploads folder statically (Crucial for viewing images!)
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use(cors());
@@ -134,7 +177,7 @@ const genAI = new GoogleGenerativeAI("AIzaSyAZRbNtGb9KDTCXH3DvXQ3emnEjRxIPrHk");
 
 app.post('/api/auth/login', (req, res) => {
     const { uid, password } = req.body;
-    const sql = 'SELECT * FROM users WHERE uid = ? AND password_hash = ?';
+    const sql = 'SELECT * FROM users WHERE uid = ? AND DATE_FORMAT(dob, "%d%m%Y") = ?';
     db.query(sql, [uid, password], (err, result) => {
         if (err) return res.status(500).json(err);
         if (result.length > 0) {
@@ -164,10 +207,10 @@ app.get('/api/kiosk/update-code', (req, res) => {
     currentKioskCode = `SECURE-${newSeed}-${timestamp}`;
     res.json({ success: true, code: currentKioskCode });
 });
-// 📺 KIOSK DISPLAY API: Real-time Mess Hall Data
+
 app.get('/api/kiosk/live-display', async (req, res) => {
     try {
-        // 1. Get Today's Live Review Stats
+        // 1. Overall live stats for the entire day (Summary)
         const statsSql = `
             SELECT 
                 COUNT(*) AS total_votes_today,
@@ -176,7 +219,7 @@ app.get('/api/kiosk/live-display', async (req, res) => {
             WHERE serve_date = CURDATE()
         `;
 
-        // 2. Get Today's Menu sorted by your Bayesian Popularity Score
+        // 2. Today's Menu sorted by Bayesian Popularity Score
         const menuSql = `
             SELECT 
                 mc.dish_name, 
@@ -189,33 +232,90 @@ app.get('/api/kiosk/live-display', async (req, res) => {
             ORDER BY mc.popularity_score DESC
         `;
 
-        // Run both queries in parallel for maximum speed
-        const [statsResult] = await db.promise().query(statsSql);
-        const [menuResult] = await db.promise().query(menuSql);
+        // 3. NEW: Live ratings and vote counts grouped by specific meal
+        const mealStatsSql = `
+            SELECT 
+                meal_type, 
+                COUNT(*) as vote_count, 
+                COALESCE(AVG(rating), 0) as live_rating 
+            FROM mess_reviews 
+            WHERE serve_date = CURDATE() 
+            GROUP BY meal_type
+        `;
 
-        // Group the menu by meal type for easy display
-        const todayMenu = {
-            Breakfast: menuResult.filter(m => m.meal_type === 'Breakfast'),
-            Lunch: menuResult.filter(m => m.meal_type === 'Lunch'),
-            Dinner: menuResult.filter(m => m.meal_type === 'Dinner')
+        // 4. The Hall of Fame Query (Top 3 All-Time per meal type)
+        const hofSql = `
+            SELECT mc.dish_name, mc.popularity_score, mc.diet_type
+            FROM menu_catalog mc
+            JOIN daily_menu dm ON mc.id = dm.dish_id
+            WHERE dm.meal_type = ?
+            GROUP BY mc.id
+            ORDER BY mc.popularity_score DESC
+            LIMIT 3
+        `;
+
+        // Run EVERYTHING in parallel for maximum speed
+        const [
+            [statsResult], 
+            [menuResult], 
+            [mealStatsResult],
+            [hofBreakfast], 
+            [hofLunch], 
+            [hofDinner]
+        ] = await Promise.all([
+            db.promise().query(statsSql),
+            db.promise().query(menuSql),
+            db.promise().query(mealStatsSql),
+            db.promise().query(hofSql, ['Breakfast']),
+            db.promise().query(hofSql, ['Lunch']),
+            db.promise().query(hofSql, ['Dinner'])
+        ]);
+
+        // Helper function to extract the live stats for a specific meal type
+        const getMealStats = (mealType) => {
+            const stat = mealStatsResult.find(m => m.meal_type === mealType);
+            return {
+                live_rating: stat ? Number(stat.live_rating).toFixed(1) : "0.0",
+                votes: stat ? stat.vote_count : 0
+            };
         };
 
-        // Determine active meal based on the current hour
+        // Group today's menu AND attach their live rating & vote count!
+        const todayMenu = {
+            Breakfast: {
+                ...getMealStats('Breakfast'),
+                items: menuResult.filter(m => m.meal_type === 'Breakfast')
+            },
+            Lunch: {
+                ...getMealStats('Lunch'),
+                items: menuResult.filter(m => m.meal_type === 'Lunch')
+            },
+            Dinner: {
+                ...getMealStats('Dinner'),
+                items: menuResult.filter(m => m.meal_type === 'Dinner')
+            }
+        };
+
+        // Determine active meal based on the current hour (24hr format)
         const currentHour = new Date().getHours();
         let activeMeal = 'Breakfast';
         if (currentHour >= 11 && currentHour < 16) activeMeal = 'Lunch';
         if (currentHour >= 16) activeMeal = 'Dinner';
 
-        // 3. Assemble the JSON payload for the Kiosk Team
+        // Assemble the ultimate JSON payload for the Kiosk Team
         res.json({
             timestamp: new Date().toISOString(),
             active_meal: activeMeal,
-            live_stats: {
+            overall_daily_stats: {
                 total_votes: statsResult[0].total_votes_today,
                 average_rating: Number(statsResult[0].average_rating_today).toFixed(1)
             },
-            trending_today: menuResult.slice(0, 3), // Top 3 highest rated dishes today
-            full_menu: todayMenu
+            today_menu: todayMenu,
+            hall_of_fame: {
+                Breakfast: hofBreakfast,
+                Lunch: hofLunch,
+                Dinner: hofDinner
+            }
         });
 
     } catch (err) {
@@ -396,7 +496,7 @@ app.get('/api/warden/overnightlog', async (req, res) => {
                 FROM gate_logs 
                 JOIN users ON gate_logs.uid = users.uid 
                 ORDER BY exit_time DESC 
-                LIMIT 10
+                LIMIT 200
             `)
         ]);
 
@@ -437,8 +537,7 @@ app.post('/api/warden/reset', (req, res) => {
 
 // Get list of all students currently OUT
 app.get('/api/warden/out-list', (req, res) =>{
-    const sql = "SELECT uid, full_name, phone_no, address FROM users WHERE is_present = 0 ORDER BY full_name ASC";
-    
+    const sql = "SELECT uid, full_name, phone_no, address, room_no FROM users WHERE is_present = 0 ORDER BY full_name ASC";    
     db.query(sql, (err, results) => {
         if (err) {
             console.error("Error fetching out list:", err);
@@ -481,8 +580,9 @@ app.post('/api/warden/checkinOverride', (req, res) => {
 //GRIEVANCE ROUTES
 
 app.get('/api/warden/grievances', (req, res) => {
+    // ✨ Added u.room_no to the SELECT statement
     const sql = `
-      SELECT g.*, u.full_name 
+      SELECT g.*, u.full_name, u.room_no 
       FROM grievances g 
       JOIN users u ON g.uid = u.uid 
       ORDER BY g.date_logged DESC
@@ -550,9 +650,11 @@ app.delete('/api/warden/grievances/:id', (req, res) => {
     });
 });
 
-//Student Mabnagement Routes
 
-// --- GET ALL STUDENTS (With Checkout Counts) ---
+
+// STUDENT MANAGEMENT ROUTES
+
+// --- 1. GET ALL STUDENTS (Now includes Batch & Branch) ---
 app.get('/api/warden/students', (req, res) => {
     const sql = `
         SELECT 
@@ -561,11 +663,12 @@ app.get('/api/warden/students', (req, res) => {
             u.room_no, 
             u.phone_no, 
             u.address,
-            u.password_hash as dob, 
+            u.dob, 
+            u.batch,  -- ✨ NEW
+            u.branch, -- ✨ NEW
             (SELECT COUNT(*) FROM gate_logs WHERE uid = u.uid AND status = 'out') as checkout_count
-        FROM users u where u.role = 'student'
+        FROM users u WHERE u.role = 'student'
         ORDER BY u.room_no ASC;
-        
     `;
 
     db.query(sql, (err, results) => {
@@ -574,19 +677,191 @@ app.get('/api/warden/students', (req, res) => {
     });
 });
 
--
+// --- 2. UPDATE SINGLE STUDENT ---
 app.put('/api/warden/students/:uid', (req, res) => {
     const { uid } = req.params;
-    const { full_name, room_no, phone_no, address, dob } = req.body;
+    // ✨ Extract batch and branch from the incoming request body
+    const { full_name, room_no, phone_no, address, dob, batch, branch } = req.body; 
     
-    const sql = "UPDATE users SET full_name=?, room_no=?, phone_no=?, address=?, password_hash=? WHERE uid=?";
+    // ✨ Added batch=? and branch=? to the SET clause
+    const sql = "UPDATE users SET full_name=?, room_no=?, phone_no=?, address=?, dob=?, batch=?, branch=? WHERE uid=?";
     
-    db.query(sql, [full_name, room_no, phone_no, address, dob, uid], (err, result) => {
+    db.query(sql, [full_name, room_no, phone_no, address, dob, batch, branch, uid], (err, result) => {
         if (err) return res.status(500).json(err);
         res.json({ success: true });
     });
 });
 
+// --- 3. BULK UPLOAD STUDENTS (CSV) ---
+app.post('/api/warden/students/bulk-upload', uploadCsv.single('file'), (req, res) => {
+    if (!req.file) return res.status(400).json({ error: "No file uploaded." });
+
+    const results = [];
+    const bufferStream = new Readable();
+    bufferStream.push(req.file.buffer);
+    bufferStream.push(null);
+
+    bufferStream
+        .pipe(csv())
+        .on('data', (data) => results.push(data))
+        .on('end', async () => {
+            let addedCount = 0;
+            let skippedCount = 0;
+            let invalidCount = 0;
+
+            try {
+                for (let row of results) {
+                    // 1. Check for missing core data
+                    if (!row.uid || !row.full_name || !row.dob) {
+                        invalidCount++;
+                        continue; 
+                    }
+
+                    // 2. STRICT UID BOUNCER
+                    const uidRegex = /^[uU]\d{7}$/;
+                    if (!uidRegex.test(row.uid)) {
+                        console.log(`Rejected row due to invalid UID format: ${row.uid}`);
+                        invalidCount++;
+                        continue;
+                    }
+
+                    // 3. STRICT BATCH BOUNCER
+                    if (row.batch) {
+                        const batchRegex = /^\d{4}-\d{2}$/;
+                        if (!batchRegex.test(row.batch)) {
+                            console.log(`Rejected UID ${row.uid} due to invalid batch format: ${row.batch}`);
+                            invalidCount++;
+                            continue;
+                        }
+                    }
+
+                    // 4. Phone_no check
+                    if (row.phone_no) {
+                        const phoneRegex = /^\d{10}$/;
+                        if (!phoneRegex.test(row.phone_no)) {
+                            console.log(`Rejected UID ${row.uid} due to invalid phone: ${row.phone_no}. Expected 10 digits.`);
+                            invalidCount++;
+                            continue;
+                        }
+                    }
+
+                    // 5. FLEXIBLE DATE BOUNCER (Accepts DD-MM-YYYY, DD/MM/YYYY, or DD.MM.YYYY)
+                    const dateRegex = /^(\d{2})[\/\-\.](\d{2})[\/\-\.](\d{4})$/;
+                    const dateMatch = row.dob.match(dateRegex);
+
+                    if (!dateMatch) {
+                        console.log(`Rejected UID ${row.uid} due to invalid date format: ${row.dob}`);
+                        invalidCount++;
+                        continue;
+                    }
+
+                    // ✨ The Regex automatically split the date for us!
+                    // dateMatch[1] = Day, dateMatch[2] = Month, dateMatch[3] = Year
+                    const mysqlDate = `${dateMatch[3]}-${dateMatch[2]}-${dateMatch[1]}`;
+
+
+                    // 6. DATABASE INSERT LOGIC
+                    const [existing] = await db.promise().query('SELECT id FROM users WHERE uid = ?', [row.uid]);
+
+                    if (existing.length > 0) {
+                        skippedCount++;
+                    } else {
+                        await db.promise().query(
+                            `INSERT INTO users 
+                            (uid, dob, full_name, role, phone_no, address, room_no, batch, branch) 
+                            VALUES (?, ?, ?, 'student', ?, ?, ?, ?, ?)`,
+                            [
+                                row.uid, 
+                                mysqlDate, // ✨ Send the perfectly translated YYYY-MM-DD date!
+                                row.full_name, 
+                                row.phone_no || null, 
+                                row.address || null, 
+                                row.room_no || null,
+                                row.batch || null,  
+                                row.branch || null  
+                            ]
+                        );
+                        addedCount++;
+                    }
+                } 
+
+                // ✨ SMART RESPONSE LOGIC
+                if (addedCount === 0 && skippedCount === 0 && invalidCount > 0) {
+                    return res.status(400).json({ error: "Invalid CSV format. Please use the provided Template." });
+                }
+
+                let finalMessage = `Sync complete! Added ${addedCount}, Skipped ${skippedCount} duplicates.`;
+                if (invalidCount > 0) {
+                    finalMessage += ` ⚠️ Ignored ${invalidCount} empty or invalid rows.`;
+                }
+
+                res.json({ success: true, message: finalMessage });
+
+            } catch (dbErr) {
+                console.error("Database error during Student CSV import:", dbErr);
+                res.status(500).json({ error: "Database error during import." });
+            }
+        });
+});
+
+// --- 4. ADD SINGLE STUDENT MANUALLY ---
+app.post('/api/warden/students', async (req, res) => {
+    const { uid, full_name, dob, phone_no, address, room_no, batch, branch } = req.body;
+
+    // 1. Basic Validation
+    if (!uid || !full_name || !dob) {
+        return res.status(400).json({ error: "UID, Name, and DOB are required." });
+    }
+
+    // 2. Strict UID Bouncer
+    if (!/^[uU]\d{7}$/.test(uid)) {
+        return res.status(400).json({ error: "UID must be 'U' followed by 7 digits." });
+    }
+
+    // 3. Strict Phone Bouncer (if provided)
+    if (phone_no && !/^\d{10}$/.test(phone_no)) {
+        return res.status(400).json({ error: "Phone number must be exactly 10 digits." });
+    }
+
+    try {
+        // Check for duplicates
+        const [existing] = await db.promise().query('SELECT id FROM users WHERE uid = ?', [uid]);
+        if (existing.length > 0) {
+            return res.status(400).json({ error: "A student with this UID already exists." });
+        }
+
+        // Insert new student (React <input type="date"> sends YYYY-MM-DD naturally, so it goes straight in)
+        await db.promise().query(
+            `INSERT INTO users 
+            (uid, dob, full_name, role, phone_no, address, room_no, batch, branch) 
+            VALUES (?, ?, ?, 'student', ?, ?, ?, ?, ?)`,
+            [uid, dob, full_name, phone_no || null, address || null, room_no || null, batch || null, branch || null]
+        );
+
+        res.json({ success: true, message: "Student added successfully!" });
+    } catch (err) {
+        console.error("Error adding student:", err);
+        res.status(500).json({ error: "Database error while adding student." });
+    }
+});
+
+// --- 5. DELETE STUDENT ---
+app.delete('/api/warden/students/:uid', async (req, res) => {
+    const { uid } = req.params;
+    try {
+        // We ensure role = 'student' so a Warden can't accidentally delete another Warden
+        const [result] = await db.promise().query('DELETE FROM users WHERE uid = ? AND role = "student"', [uid]);
+        
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ error: "Student not found." });
+        }
+        
+        res.json({ success: true, message: "Student removed from registry." });
+    } catch (err) {
+        console.error("Error deleting student:", err);
+        res.status(500).json({ error: "Database error. Student may have tied records (like gate logs)." });
+    }
+});
 
 //DashboardHome Routes
 
@@ -788,7 +1063,9 @@ app.get('/api/admin/weekly-menu', (req, res) => {
             d.dish_id,
             d.status, 
             m.dish_name, 
-            m.diet_type 
+            m.diet_type,
+            m.cost,
+            m.effort_score 
         FROM daily_menu d
         JOIN menu_catalog m ON d.dish_id = m.id
         WHERE d.serve_date BETWEEN ? AND ?
@@ -872,66 +1149,224 @@ app.put('/api/admin/daily-menu/approve', (req, res) => {
     });
 });
 
-//9. POST: Auto generate menu ai
-app.post('/api/admin/ai-generate-menu', async (req, res) => {
+// //9. POST: Auto generate menu ai
+// app.post('/api/admin/ai-generate-menu', async (req, res) => {
+//     const { start_date, end_date, custom_prompt } = req.body;
+
+//     if (!start_date || !end_date) {
+//         return res.status(400).json({ error: "Start and End dates are required." });
+//     }
+
+//     try {
+//         // 1. Fetch the exact menu catalog from your database
+// const [catalog] = await db.promise().query("SELECT id, dish_name, diet_type, cost, effort_score, popularity_score FROM menu_catalog");        
+//         if (catalog.length === 0) {
+//             return res.status(400).json({ error: "Menu catalog is empty. Add dishes first!" });
+//         }
+
+//         // 2. Construct the strict AI Prompt
+//         const systemPrompt = `
+//         You are an expert Hostel Mess Manager and Nutritionist. 
+//         Your job is to generate a weekly menu schedule from ${start_date} to ${end_date}.
+        
+//         Here is the ONLY catalog of dishes you are allowed to use. Do NOT invent new dishes:
+//         ${JSON.stringify(catalog, null, 2)}
+
+//         RULES:
+//         1. Every single date between ${start_date} and ${end_date} must have exactly three meal types: "Breakfast", "Lunch", and "Dinner".
+//         2. For each meal, you must select at least ONE "Veg" or "Common" dish, AND at least ONE "Non-Veg" dish (unless the custom prompt says otherwise).
+//         3. Balance the 'cost' and 'effort_score' so the kitchen isn't overworked on any single day.
+//         4. Do not serve the same exact meal two days in a row.
+//         5. 5. MAXIMIZE STUDENT HAPPINESS: Prioritize dishes with a high 'popularity_score'. If you must schedule a high-effort or high-cost dish, ensure its popularity justifies it.
+//         6. The Warden provided these custom instructions: "${custom_prompt || 'Balance cost and nutrition.'}"
+
+//         OUTPUT FORMAT:
+//         You must return ONLY a raw JSON array of objects. No markdown formatting, no \`\`\`json blocks, no explanations. Just the array.
+//         Example format:
+//         [
+//           { "serve_date": "YYYY-MM-DD", "meal_type": "Breakfast", "dish_id": 15 },
+//           { "serve_date": "YYYY-MM-DD", "meal_type": "Breakfast", "dish_id": 22 }
+//         ]
+//         `;
+
+//         // 3. Call the AI Model
+//         const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+//         const result = await model.generateContent(systemPrompt);
+//         let aiResponse = result.response.text();
+
+//         // 4. Clean the response (AI sometimes adds markdown ticks even when told not to)
+//         aiResponse = aiResponse.replace(/```json/g, "").replace(/```/g, "").trim();
+
+//         // 5. Parse and send back to frontend
+//         const generatedMenu = JSON.parse(aiResponse);
+//         res.json({ success: true, proposed_menu: generatedMenu });
+
+//     } catch (err) {
+//         console.error("AI Generation Error:", err);
+//         res.status(500).json({ error: "The AI failed to generate the menu. Please try again." });
+//     }
+// });
+
+// POST: Auto-generate menu using Gemini (Common Sense) + Python GA (Math)
+app.post('/api/admin/ga-generate-menu', async (req, res) => {
     const { start_date, end_date, custom_prompt } = req.body;
 
-    if (!start_date || !end_date) {
-        return res.status(400).json({ error: "Start and End dates are required." });
+    if (!start_date) {
+        return res.status(400).json({ error: "Start date is required." });
     }
 
     try {
-        // 1. Fetch the exact menu catalog from your database
-const [catalog] = await db.promise().query("SELECT id, dish_name, diet_type, cost, effort_score, popularity_score FROM menu_catalog");        
+        // 1. Fetch the catalog
+        const [catalog] = await db.promise().query("SELECT id, dish_name, diet_type, cost, effort_score, popularity_score FROM menu_catalog");
+        
         if (catalog.length === 0) {
-            return res.status(400).json({ error: "Menu catalog is empty. Add dishes first!" });
+            return res.status(400).json({ error: "Menu catalog is empty." });
         }
 
-        // 2. Construct the strict AI Prompt
-        const systemPrompt = `
-        You are an expert Hostel Mess Manager and Nutritionist. 
-        Your job is to generate a weekly menu schedule from ${start_date} to ${end_date}.
+        // 2. ASK GEMINI FOR "COMMON SENSE"
+        // We ask Gemini to categorize the dish IDs so we don't serve Chicken for Breakfast
+        const systemPrompt = `You are a Kerala/Indian Hostel Mess Manager. Look at this catalog:
+        ${JSON.stringify(catalog)}
         
-        Here is the ONLY catalog of dishes you are allowed to use. Do NOT invent new dishes:
-        ${JSON.stringify(catalog, null, 2)}
+        Categorize the dish IDs into "breakfast", "lunch", and "dinner" based on common culinary sense. 
+        For example: Idli, Appam, Bread, Puri are breakfast. Rice, Biryani, Chicken are Lunch/Dinner. 
+        A dish CAN be in multiple categories if it makes sense.
 
         RULES:
-        1. Every single date between ${start_date} and ${end_date} must have exactly three meal types: "Breakfast", "Lunch", and "Dinner".
-        2. For each meal, you must select at least ONE "Veg" or "Common" dish, AND at least ONE "Non-Veg" dish (unless the custom prompt says otherwise).
-        3. Balance the 'cost' and 'effort_score' so the kitchen isn't overworked on any single day.
-        4. Do not serve the same exact meal two days in a row.
-        5. 5. MAXIMIZE STUDENT HAPPINESS: Prioritize dishes with a high 'popularity_score'. If you must schedule a high-effort or high-cost dish, ensure its popularity justifies it.
-        6. The Warden provided these custom instructions: "${custom_prompt || 'Balance cost and nutrition.'}"
+         1. Every single date between ${start_date} and ${end_date} must have exactly three meal types: "Breakfast", "Lunch", and "Dinner".
+         2. For each meal, you must select at least ONE "Veg" or "Common" dish, AND at least ONE "Non-Veg" dish (unless the custom prompt says otherwise).
+         3. Balance the 'cost' and 'effort_score' so the kitchen isn't overworked on any single day.
+         4. Do not serve the same exact meal two days in a row.
+         5. MAXIMIZE STUDENT HAPPINESS: Prioritize dishes with a high 'popularity_score'. If you must schedule a high-effort or high-cost dish, ensure its popularity justifies it.
+         6. The Warden provided these custom instructions: "${custom_prompt || 'Balance cost and nutrition.'}"
 
-        OUTPUT FORMAT:
-        You must return ONLY a raw JSON array of objects. No markdown formatting, no \`\`\`json blocks, no explanations. Just the array.
-        Example format:
-        [
-          { "serve_date": "YYYY-MM-DD", "meal_type": "Breakfast", "dish_id": 15 },
-          { "serve_date": "YYYY-MM-DD", "meal_type": "Breakfast", "dish_id": 22 }
-        ]
-        `;
+        
+        Return ONLY a raw JSON object exactly like this, with no markdown:
+        { "breakfast": [1, 5], "lunch": [2, 6, 8], "dinner": [2, 7, 8] }`;
 
-        // 3. Call the AI Model
+        // Assuming genAI is already initialized at the top of your server.js!
         const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
         const result = await model.generateContent(systemPrompt);
-        let aiResponse = result.response.text();
+        
+        // Clean the response
+        let aiText = result.response.text().replace(/```json/g, "").replace(/```/g, "").trim();
+        const smartCategories = JSON.parse(aiText);
 
-        // 4. Clean the response (AI sometimes adds markdown ticks even when told not to)
-        aiResponse = aiResponse.replace(/```json/g, "").replace(/```/g, "").trim();
+        // 3. SEND BOTH TO PYTHON FOR STRICT MATH OPTIMIZATION
+        const aiResponse = await axios.post('http://localhost:5000/generate-menu', {
+            catalog: catalog,
+            start_date: start_date,
+            categories: smartCategories // Pass Gemini's brain to Python!
+        });
 
-        // 5. Parse and send back to frontend
-        const generatedMenu = JSON.parse(aiResponse);
-        res.json({ success: true, proposed_menu: generatedMenu });
+        // 4. Send back to React
+        res.json({ success: true, proposed_menu: aiResponse.data.proposed_menu });
 
     } catch (err) {
-        console.error("AI Generation Error:", err);
-        res.status(500).json({ error: "The AI failed to generate the menu. Please try again." });
+        console.error("Failed in Hybrid AI Pipeline:", err);
+        res.status(500).json({ error: "AI Engine failed to generate menu." });
     }
 });
 
+//10. 📁 BULK UPLOAD MENU CATALOG (CSV)
+app.post('/api/admin/menu-catalog/bulk-upload', uploadCsv.single('file'), (req, res) => {
+    if (!req.file) return res.status(400).json({ error: "No file uploaded." });
 
+    const results = [];
+    const bufferStream = new Readable();
+    bufferStream.push(req.file.buffer);
+    bufferStream.push(null);
 
+    bufferStream
+        .pipe(csv())
+        .on('data', (data) => results.push(data))
+        .on('end', async () => {
+            let addedCount = 0;
+            let skippedCount = 0;
+
+            try {
+                for (let row of results) {
+                    // Check for the exact full meal string
+                    const [existing] = await db.promise().query(
+                        'SELECT id FROM menu_catalog WHERE dish_name = ?', 
+                        [row.dish_name]
+                    );
+
+                    if (existing.length > 0) {
+                        skippedCount++;
+                    } else {
+                        // Insert the full meal
+                        await db.promise().query(
+                            'INSERT INTO menu_catalog (dish_name, diet_type, effort_score, cost) VALUES (?, ?, ?, ?)',
+                            [row.dish_name, row.diet_type, row.effort_score || 5, row.cost || 0]
+                        );
+                        addedCount++;
+                    }
+                }
+
+                res.json({ 
+                    success: true, 
+                    message: `Upload complete! Added ${addedCount} new meals. Skipped ${skippedCount} duplicates.`,
+                });
+
+            } catch (dbErr) {
+                console.error("Database error during CSV import:", dbErr);
+                res.status(500).json({ error: "Database error during import." });
+            }
+        });
+});
+
+// 11. PUT: Sync and Approve the entire week's menu at once (Replaces the old /approve route)
+app.put('/api/admin/weekly-menu/sync', async (req, res) => {
+    const { start_date, end_date, menu_items } = req.body;
+    
+    try {
+        // 1. Clear out the existing schedule for this exact date range
+        await db.promise().query("DELETE FROM daily_menu WHERE serve_date BETWEEN ? AND ?", [start_date, end_date]);
+
+        if (!menu_items || menu_items.length === 0) {
+            return res.json({ success: true, message: "Menu cleared and saved." });
+        }
+
+        const resolvedSchedule = [];
+
+        // 2. Loop through the AI's draft to resolve IDs
+        for (let item of menu_items) {
+            let currentDishId = item.dish_id;
+
+            // ✨ THE MAGIC: If the AI invented this dish, it won't have an ID yet!
+            if (item.is_new_creation) {
+                const insertSql = "INSERT INTO menu_catalog (dish_name, diet_type, cost, effort_score) VALUES (?, ?, ?, ?)";
+                const [result] = await db.promise().query(insertSql, [
+                    item.dish_name, 
+                    item.diet_type, 
+                    item.cost || 0, 
+                    item.effort_score || 5
+                ]);
+                // Grab the freshly minted ID from the database!
+                currentDishId = result.insertId; 
+            }
+
+            // Push the resolved item to our final scheduling array
+            resolvedSchedule.push([
+                item.serve_date, 
+                item.meal_type, 
+                currentDishId, 
+                'Approved' // Everything saved through this route is officially approved
+            ]);
+        }
+
+        // 3. Bulk insert the finalized schedule into the daily_menu table
+        const scheduleSql = "INSERT INTO daily_menu (serve_date, meal_type, dish_id, status) VALUES ?";
+        await db.promise().query(scheduleSql, [resolvedSchedule]);
+
+        res.json({ success: true, message: "Weekly menu saved! Any new AI recipes were added to the catalog." });
+        
+    } catch (err) {
+        console.error("Error syncing weekly menu:", err);
+        res.status(500).json({ error: "Failed to save weekly menu" });
+    }
+});
 
 
 // WARDEN MESS REVIEWS API
@@ -982,6 +1417,119 @@ app.post('/api/admin/generate-insights', async (req, res) => {
 
 
 
+// ==========================================
+// Whatsapp connect APIs
+// ==========================================
+
+// // WhatsApp control endpoints
+// app.get('/api/whatsapp/qr', (req, res) => {
+//   const qrPath = path.join(__dirname, 'public', 'qr.png');
+  
+//   if (fs.existsSync(qrPath)) {
+//     res.sendFile(qrPath);
+//   } else {
+//     res.status(404).json({ error: 'QR code not available' });
+//   }
+// });
+
+// app.get('/api/whatsapp/status', (req, res) => {
+//   res.json({
+//     connected: client.info ? true : false,
+//     ready: client.info !== null,
+//     phone: client.info?.me?.user || null
+//   });
+// });
+
+// app.post('/api/whatsapp/disconnect', async (req, res) => {
+//   try {
+//     console.log('Disconnecting WhatsApp client...');
+    
+//     // Force logout with multiple methods
+//     if (client.info) {
+//       try {
+//         console.log('Attempting logout...');
+        
+//         // Method 1: Try direct logout
+//         await client.logout();
+//         console.log('Logout method 1 completed');
+//       } catch (logoutError1) {
+//         console.log('Logout method 1 failed:', logoutError1.message);
+        
+//         try {
+//           // Method 2: Use page evaluation to force logout
+//           const page = await client.pupPage;
+//           if (page) {
+//             await page.evaluate(() => {
+//               // Find and click logout/leave button in WhatsApp UI
+//               const logoutBtn = document.querySelector('[data-icon="logout"], [title*="Log out"], [aria-label*="Log out"]');
+//               if (logoutBtn) {
+//                 logoutBtn.click();
+//               }
+//             });
+//             console.log('Logout method 2 completed');
+//           }
+//         } catch (logoutError2) {
+//           console.log('Logout method 2 failed:', logoutError2.message);
+//         }
+//       }
+//     }
+    
+//     // Wait a moment for logout to complete
+//     await new Promise(resolve => setTimeout(resolve, 2000));
+    
+//     // Destroy client
+//     // Move the response to the VERY end of the try block
+//     await client.destroy();
+//     // ... (all your fs.removeSync and exec logic)
+
+//     // Move this line to the very bottom of the try block
+//     res.json({ success: true, message: 'WhatsApp disconnected successfully' });
+//     console.log('Client destroyed');
+    
+//     // Force kill any remaining Chrome processes
+//     const { exec } = require('child_process');
+//     exec('taskkill /IM chrome.exe /F 2>nul', (error) => {
+//       if (error) {
+//         console.log('No Chrome processes to kill');
+//       } else {
+//         console.log('Killed remaining Chrome processes');
+//       }
+//     });
+    
+//     // Clean up session data completely
+//     const fs = require('fs-extra');
+//     const path = require('path');
+//     const authPath = path.join(__dirname, '.wwebjs_auth');
+//     if (fs.existsSync(authPath)) {
+//       fs.removeSync(authPath);
+//       console.log('Cleaned up session data');
+//     }
+    
+//     // Reset QR code
+//     const qrPath = path.join(__dirname, 'public', 'qr.png');
+//     if (fs.existsSync(qrPath)) {
+//       fs.removeSync(qrPath);
+//       console.log('Removed QR code');
+//     }
+    
+//     res.json({ success: true, message: 'WhatsApp disconnected successfully' });
+//   } catch (error) {
+//     console.error('Disconnect error:', error);
+//     res.status(500).json({ success: false, error: 'Failed to disconnect' });
+//   }
+// });
+
+// // Manual WhatsApp initialization endpoint
+// app.post('/api/whatsapp/connect', async (req, res) => {
+//   try {
+//     console.log('Initializing WhatsApp client...');
+//     await client.initialize();
+//     res.json({ success: true, message: 'WhatsApp initialization started' });
+//   } catch (error) {
+//     console.error('Initialization error:', error);
+//     res.status(500).json({ success: false, error: 'Failed to initialize WhatsApp' });
+//   }
+// });
 
 
 
@@ -994,68 +1542,112 @@ app.post('/api/admin/generate-insights', async (req, res) => {
 
 
 
+// 🛠️ TEMPORARY ROUTE TO FORCE BAYESIAN CALCULATION (WITH FLAG PENALTIES)
+app.get('/api/admin/force-popularity-sync', async (req, res) => {
+    console.log("🧮 Running Math Engine: Bayesian Average + Flag Penalties...");
 
-// 🛠️ TEMPORARY ROUTE TO FORCE BAYESIAN CALCULATION 🛠️
-app.get('/api/admin/force-popularity-sync', (req, res) => {
-    console.log("🧮 Running Manual Nightly Bayesian Popularity Calculation...");
+    try {
+        // 1. Get base stats AND the dish name so we can match it to the JSON
+        const fetchReviewsSql = `
+            SELECT 
+                mc.id AS dish_id,
+                mc.dish_name,
+                COUNT(mr.id) AS real_votes,
+                COALESCE(AVG(mr.rating), 0) AS real_avg
+            FROM menu_catalog mc
+            LEFT JOIN daily_menu dm ON mc.id = dm.dish_id
+            LEFT JOIN mess_reviews mr 
+                ON dm.serve_date = mr.serve_date 
+                AND dm.meal_type = mr.meal_type
+                AND (mc.diet_type = mr.diet_type OR mc.diet_type = 'Common')
+            GROUP BY mc.id
+        `;
 
-    // 1. Get all dishes and their reviews using the correct temporal JOIN
-    const fetchReviewsSql = `
-        SELECT 
-            mc.id AS dish_id,
-            COUNT(mr.id) AS real_votes,
-            COALESCE(AVG(mr.rating), 0) AS real_avg
-        FROM menu_catalog mc
-        LEFT JOIN daily_menu dm ON mc.id = dm.dish_id
-        LEFT JOIN mess_reviews mr 
-            ON dm.serve_date = mr.serve_date 
-            AND dm.meal_type = mr.meal_type
-            AND (mc.diet_type = mr.diet_type OR mc.diet_type = 'Common')
-        GROUP BY mc.id
-    `;
+        // 2. Fetch all raw JSON issues across the entire database
+        const fetchIssuesSql = `SELECT dish_issues FROM mess_reviews WHERE dish_issues IS NOT NULL AND dish_issues != '{}'`;
 
-    db.query(fetchReviewsSql, (err, dishes) => {
-        if (err) {
-            console.error("❌ Failed to fetch reviews for math:", err);
-            return res.status(500).json({ error: "Failed to fetch reviews", mysql_error: err.sqlMessage }); 
-        }
+        // Run both fetches
+        const [dishes] = await db.promise().query(fetchReviewsSql);
+        const [issues] = await db.promise().query(fetchIssuesSql);
 
         if (dishes.length === 0) {
             return res.json({ success: true, message: "No dishes to update." });
         }
 
-        // 2. The Bayesian Constants
+        // 3. Build a "Flag Dictionary" 
+        // Example output: { "Idli": 12, "Chicken Curry": 4 }
+        const flagDictionary = {};
+        issues.forEach(row => {
+            try {
+                const parsed = typeof row.dish_issues === 'string' ? JSON.parse(row.dish_issues) : row.dish_issues;
+                Object.entries(parsed).forEach(([dishName, tags]) => {
+                    if (!flagDictionary[dishName]) flagDictionary[dishName] = 0;
+                    // Add the number of tags (e.g., "Cold" and "Bland" = 2 penalties)
+                    flagDictionary[dishName] += tags.length; 
+                });
+            } catch (e) { /* Ignore malformed JSON */ }
+        });
+
+        // Helper: Split combo dish names exactly like your frontend does!
+        const splitDishName = (name) => {
+            if (!name) return [];
+            return name.split(/ \+ | & | and |, /i).map(s => s.trim()).filter(Boolean);
+        };
+
+        // --- THE CONSTANTS ---
         const C = 10;   // Dummy votes
         const m = 3.5;  // Baseline score
+        const PENALTY_PER_FLAG = 0.15; // How much a single tag drops the score
         let completedUpdates = 0; 
 
-        // 3. Calculate and Update each dish
+        // 4. Calculate and Update each dish
         dishes.forEach(dish => {
             const realSum = dish.real_votes * dish.real_avg;
             const dummySum = C * m;
             const totalVotes = dish.real_votes + C;
             
-            // Calculate and round to 2 decimal places
-            const finalScore = ((realSum + dummySum) / totalVotes).toFixed(2);
+            // Step A: Base Bayesian Score
+            let score = (realSum + dummySum) / totalVotes;
 
-            // 4. Save it back to the catalog
+            // Step B: Calculate Total Flags for this specific dish (handling combos)
+            const subItems = splitDishName(dish.dish_name);
+            let totalFlagsForDish = 0;
+            subItems.forEach(subItem => {
+                if (flagDictionary[subItem]) {
+                    totalFlagsForDish += flagDictionary[subItem];
+                }
+            });
+
+            // Step C: Apply the Penalty
+            const totalPenalty = totalFlagsForDish * PENALTY_PER_FLAG;
+            score = score - totalPenalty;
+
+            // Step D: Clamp the score so it stays between 1.0 and 5.0
+            if (score < 1.0) score = 1.0;
+            if (score > 5.0) score = 5.0;
+
+            const finalScore = score.toFixed(2);
+
+            // 5. Save it back to the catalog
             const updateSql = `UPDATE menu_catalog SET popularity_score = ? WHERE id = ?`;
             db.query(updateSql, [finalScore, dish.dish_id], (updateErr) => {
                 if (updateErr) console.error(`❌ Failed to update dish ${dish.dish_id}`);
                 
                 completedUpdates++;
-                
-                // 5. Send success response only when all updates finish
                 if (completedUpdates === dishes.length) {
-                    console.log("✅ All dishes updated with true Bayesian scores!");
+                    console.log("✅ All dishes updated with Penalty-Adjusted Bayesian scores!");
                     res.json({ 
                         success: true, 
-                        message: `Successfully calculated and updated ${dishes.length} dishes! Check your Warden Dashboard.` 
+                        message: `Math Complete! Updated ${dishes.length} dishes with Flag Penalties applied. Check the Warden Dashboard!` 
                     });
                 }
             });
         });
-    });
+
+    } catch (err) {
+        console.error("❌ Math Engine Error:", err);
+        res.status(500).json({ error: "Failed to calculate penalties", mysql_error: err.message });
+    }
 });
 
 // 🛠️ TEMPORARY TEST ROUTE 1: Fetch Menu by Specific Date

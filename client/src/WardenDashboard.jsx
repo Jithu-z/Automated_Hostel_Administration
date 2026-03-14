@@ -1,14 +1,15 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import axios from 'axios';
 import { 
   Home,Star,Clock,RefreshCw,Trash2,Search, CheckCircle, ClipboardList, Utensils, Moon, AlertCircle, Users, Settings, LogOut, 
   Filter, ListFilter, X, FileVideo, Phone, Calendar, Shield, Edit2, Save, ChevronRight,TrendingDown, AlertOctagon, MessageSquare, Plus, Sparkles, BrainCircuit, Image as ImageIcon,
-  TrendingUp, ThumbsUp, ThumbsDown, Zap
+  TrendingUp, ThumbsUp, ThumbsDown, Zap, Upload, AlertTriangle, ChevronDown, UserCheck, GraduationCap, Download
 } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 // --- SUB-COMPONENTS  ---
 
-const OvernightLogTab= () => {
+const OvernightLogTab = () => {
   const [stats, setStats] = useState({ out_now: 0, total_students: 50 });
   const [recentLogs, setRecentLogs] = useState([]);
   const [outStudents, setOutStudents] = useState([]);
@@ -17,6 +18,9 @@ const OvernightLogTab= () => {
   const [absentSearch, setAbsentSearch] = useState('');
   const [gateSearch, setGateSearch] = useState('');
   const [gateFilter, setGateFilter] = useState('All');
+  const [gateDate, setGateDate] = useState(''); // Empty string means "All Time"
+  const [isLocked, setIsLocked] = useState(false);
+
   // Initial Data Fetch (Only for Home Tab)
   useEffect(() => {
     fetchOvernightLogData();
@@ -25,16 +29,39 @@ const OvernightLogTab= () => {
   }, []);
 
   const fetchOvernightLogData = () => {
-    // Replace IP with your backend IP
     setLoading(true);
     axios.get('http://localhost:3001/api/warden/overnightlog') 
       .then(res => {
         setStats(res.data.stats);
         setRecentLogs(res.data.recent_logs);
       })
-      .catch(err => console.error("Dashboard fetch error", err))
-      .finally(setLoading(false));
+      .catch(err => console.error("Dashboard fetch error", err)) // We leave this as console.error so it doesn't spam toasts every 5 seconds if the Wi-Fi drops!
+      .finally(() => setLoading(false));
   };
+
+  // 1. The actual database call (Runs ONLY if they click Confirm)
+  const executeCheckin = async (uid) => {
+    setLoading(true);
+    try {
+      const res = await axios.post("http://localhost:3001/api/warden/checkinOverride", {
+        student_id: uid,
+        action: 'returned',
+        reason: 'Returned via Overridden check-in',
+        destination: 'Hostel',
+      });
+      
+      if (res.data.success) {
+          setOutStudents(prev => prev.filter(student => student.uid !== uid));
+          fetchOvernightLogData();
+          toast.success(`Student forcefully checked in!`); 
+      }
+    } catch (err) {
+      console.error("Server Error:", err.response?.data);
+      toast.error(err.response?.data?.error || "System Error during check-in"); 
+    } finally {
+      setLoading(false);
+    }
+  }
 
   const handleOutClick = async () => {
     try {
@@ -42,230 +69,351 @@ const OvernightLogTab= () => {
       setOutStudents(res.data);
       setShowOutModal(true);
     } catch (err) {
-      alert("Failed to fetch data");
+      toast.error("Failed to fetch student data."); // ✨ Upgraded
     }
   };
   
   const handleReset = async () => {
-    if (!window.confirm(" ARE YOU SURE? This will delete ALL logs and mark everyone as Present.")) {
+    if (!window.confirm("ARE YOU SURE? This will delete ALL logs and mark everyone as Present.")) {
       return;
     }
 
-    try {
-      await axios.post('http://localhost:3001/api/warden/reset');
-      alert("System Reset Successfully!");
-      fetchOvernightLogData(); 
-    } catch (err) {
-      alert("Failed to reset system");
-    }
+    // ✨ Upgraded to a Toast Promise! It handles the loading spinner, success, and error states automatically.
+    toast.promise(
+      axios.post('http://localhost:3001/api/warden/reset'),
+      {
+        loading: 'Wiping system logs...',
+        success: 'System Reset Successfully!',
+        error: 'Failed to reset system.',
+      }
+    ).then(() => fetchOvernightLogData());
   };
 
-  const checkinOverride = async (uid) =>{
-      if (!window.confirm(`Confirm Override check-in for uid ${uid}?`)) {
-        return;
-      }
-      setLoading(true);
-      try{
-        const res= await axios.post("http://localhost:3001/api/warden/checkinOverride",{
-          student_id: uid,
-          action: 'returned',
-          reason: 'Returned via Overridden check-in',
-          destination: 'Hostel',
-        })
-        if (res.data.success) {
-            setOutStudents(prev => prev.filter(student => student.uid !== uid));
-            fetchOvernightLogData();
-      }
-      }catch (err) {
-       if (err) {
-         console.error("Server Error:", err.response.data);
-         alert(`System Error: ${JSON.stringify(err.response.data)}`);
-      }
-    } finally {
-      setLoading(false);
-    }
+  // 2. The Custom Confirmation UI
+  const checkinOverride = (uid) => {
+    // We pass 't' (the toast object) so we can dismiss this specific popup when a button is clicked
+    setIsLocked(true);
+    toast((t) => (
+      <div className="flex flex-col gap-3 min-w-[250px]">
+        <div className="flex items-center gap-2 text-gray-800">
+          <AlertTriangle size={18} className="text-orange-500" />
+          <p className="font-bold text-sm">Force check-in for {uid}?</p>
+        </div>
+        <div className="flex gap-2 justify-end mt-1">
+          <button
+            onClick={() => {toast.dismiss(t.id);setIsLocked(false);}}
+            className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-sm font-bold hover:bg-gray-200 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => {
+              toast.dismiss(t.id); // Hide the popup
+              executeCheckin(uid);
+              setIsLocked(false); 
+            }}
+            className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm font-bold hover:bg-green-700 transition-colors shadow-sm"
+          >
+            Confirm
+          </button>
+        </div>
+      </div>
+    ), { 
+      duration: Infinity, // Keeps it open until they click a button
+      id: `confirm-${uid}` // Prevents them from spam-clicking and opening 5 popups
+    });
   }
 
   // FILTER OUT STUDENTS
   const filteredOutStudents = outStudents.filter(s => {
       const term = absentSearch.toLowerCase();
-      // Search by Name OR UID
-      return s.full_name.toLowerCase().includes(term) || s.uid.toLowerCase().includes(term);
+      return (
+        (s.full_name || '').toLowerCase().includes(term) || 
+        (s.uid || '').toLowerCase().includes(term) ||
+        (s.room_no || '').toLowerCase().includes(term)
+      );
   });
 
   // FILTER GATE LOGS 
   const filteredRecentLogs = recentLogs.filter(log => {
       const term = gateSearch.toLowerCase();
-      
-      // 1. Search Text (Name or UID)
-      const matchText = log.full_name.toLowerCase().includes(term) || log.uid.toLowerCase().includes(term);
-
-      // 2. Dropdown Filter (Status/Type)
+      const matchText = (log.full_name || '').toLowerCase().includes(term) || 
+                        (log.uid || '').toLowerCase().includes(term);
       const matchFilter = gateFilter === 'All' 
         ? true 
         : (gateFilter === 'Checked Out' ? log.status === 'out' : log.status === 'returned');
+      const logDateString = new Date(log.exit_time).toISOString().split('T')[0];
+      const matchDate = gateDate === '' ? true : logDateString === gateDate;
 
-      return matchText && matchFilter;
+      return matchText && matchFilter && matchDate;
   });
   
   return (
   <div className="animate-fade-in">
-    <h1 className="text-2xl font-bold text-gray-800 mb-6">Overnight Logs</h1>
-    
-    {/* Stats Grid */}
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-      <div 
-        onClick={handleOutClick} 
-        className="bg-red-50 p-6 rounded-2xl border border-red-100 cursor-pointer hover:shadow-lg transition-all"
-      >
-        <div className="flex justify-between items-start">
-          <div>
-            <p className="text-gray-500 font-medium mb-1">Students Out</p>
-            <h3 className="text-4xl font-bold text-red-600">{stats.out_now}</h3>
-          </div>
-          <div className="p-3 bg-red-100 rounded-xl text-red-600"><LogOut size={24}/></div>
-        </div>
-        <p className="text-xs text-red-400 mt-4 font-medium">Click to view list &rarr;</p>
+    {isLocked && (
+        <div className="fixed inset-0 z-[40] bg-black/10 backdrop-blur-[2px] cursor-not-allowed" />
+      )}
+    {/* --- HEADER & GLOBAL ACTIONS --- */}
+    <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+      <div>
+        <h1 className="text-2xl font-bold text-gray-800">Overnight Logs</h1>
+        <p className="text-sm text-gray-500 mt-1">Monitor live campus exits and entries.</p>
       </div>
-
-      <div className="bg-blue-50 p-6 rounded-2xl border border-blue-100">
-        <div className="flex justify-between items-start">
-          <div>
-            <p className="text-gray-500 font-medium mb-1">Total Students</p>
-            <h3 className="text-4xl font-bold text-blue-600">{stats.total_students}</h3>
-          </div>
-          <div className="p-3 bg-blue-100 rounded-xl text-blue-600"><Users size={24}/></div>
-        </div>
-      </div>
-
-      <div className="flex gap-3 m-10 mb-10">
+      <div className="flex items-center gap-3 w-full md:w-auto">
         <button 
           onClick={handleReset}
-          className="px-4 py-2 bg-red-100 text-red-600 font-bold rounded-xl hover:bg-red-200 transition text-sm"
+          className="flex-1 md:flex-none px-4 py-2.5 bg-red-50 text-red-600 font-bold border border-red-200 rounded-xl hover:bg-red-100 hover:border-red-300 transition text-sm flex items-center justify-center gap-2 active:scale-95"
         >
-          Reset Log
+          <AlertTriangle size={16} /> Factory Reset
         </button>
-        <button onClick={fetchOvernightLogData} className="p-2 bg-white rounded-full shadow-sm hover:shadow-md transition">
-          <RefreshCw size={20} className={`text-blue-600 ${loading ? 'animate-spin' : ''}`} />
+        <button 
+          onClick={fetchOvernightLogData} 
+          className="p-2.5 bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md transition active:scale-95"
+          title="Refresh Data"
+        >
+          <RefreshCw size={18} className={`text-blue-600 ${loading ? 'animate-spin' : ''}`} />
         </button>
       </div>
     </div>
+    
+    {/* --- STATS GRID --- */}
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+      
+      {/* Students Out Card (Clickable) */}
+      <div 
+        onClick={handleOutClick} 
+        className="bg-red-50 p-6 rounded-2xl border border-red-100 cursor-pointer hover:shadow-md hover:border-red-300 transition-all group relative overflow-hidden"
+      >
+        <div className="absolute top-0 right-0 w-32 h-32 bg-red-100 rounded-bl-full opacity-50 -z-10 group-hover:scale-110 transition-transform"></div>
+        <div className="flex justify-between items-start z-10">
+          <div>
+            <p className="text-sm font-bold text-red-400 uppercase tracking-wider mb-1">Currently Out</p>
+            <h3 className="text-4xl font-black text-red-700">{stats.out_now}</h3>
+          </div>
+          <div className="p-3 bg-red-200/50 rounded-xl text-red-600"><LogOut size={24}/></div>
+        </div>
+        <div className="mt-4 flex items-center text-sm font-bold text-red-600 gap-1 group-hover:translate-x-1 transition-transform">
+          View Absent List <span>&rarr;</span>
+        </div>
+      </div>
 
-    {/* Recent Logs Table */}
-    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-      <div className="p-6 border-b border-gray-50 flex justify-between items-center">
-        <h3 className="font-bold text-gray-800">Recent Gate Activity</h3>
-      </div>
-      {/* SEARCH INPUT */}
-      <div className='flex flex-row pl-6'>
-        <div className="relative w-full md:w-auto">
-            <Search size={16} className="absolute left-3 top-2.5 text-gray-400" />
-            <input 
-                type="text" 
-                placeholder="Search Log..." 
-                value={gateSearch}
-                onChange={(e) => setGateSearch(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-100 transition"
-            />
+      {/* Total Students Card */}
+      <div className="bg-blue-50 p-6 rounded-2xl border border-blue-100 relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-32 h-32 bg-blue-100 rounded-bl-full opacity-50 -z-10"></div>
+        <div className="flex justify-between items-start z-10">
+          <div>
+            <p className="text-sm font-bold text-blue-400 uppercase tracking-wider mb-1">Total Residents</p>
+            <h3 className="text-4xl font-black text-blue-700">{stats.total_students}</h3>
+          </div>
+          <div className="p-3 bg-blue-200/50 rounded-xl text-blue-600"><Users size={24}/></div>
         </div>
-        {/* STATUS FILTER */}
-        <div className="ml-2 relative flex">
-            <Filter size={16} className="absolute left-3 top-2.5 text-gray-400" />
-            <select 
-                value={gateFilter}
-                onChange={(e) => setGateFilter(e.target.value)}
-                className="pl-9 pr-8 py-2 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-700 outline-none focus:ring-2 focus:ring-blue-100 cursor-pointer appearance-none"
-            >
-                <option value="All">All Activity</option>
-                <option value="Checked In">Returned</option>
-                <option value="Checked Out">Out</option>
-            </select>
+        <div className="mt-4 flex items-center text-sm font-bold text-blue-500 gap-1">
+          On Registry
         </div>
       </div>
+    </div>
+
+    {/* --- RECENT LOGS TABLE --- */}
+    <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+      
+      {/* Table Toolbar */}
+      <div className="p-5 border-b border-gray-100 flex flex-col sm:flex-row justify-between items-center gap-4 bg-gray-50/50">
+        <h3 className="font-bold text-gray-800 flex items-center gap-2">
+          Recent Gate Activity
+        </h3>
+        
+        <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+          
+          {/* Search Input */}
+          <div className="relative w-full sm:w-56">
+              <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+              <input 
+                  type="text" 
+                  placeholder="Search log..." 
+                  value={gateSearch}
+                  onChange={(e) => setGateSearch(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2 bg-white border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 transition shadow-sm"
+              />
+          </div>
+
+          {/*Date Picker*/}
+          <div className={`flex items-center w-full sm:w-auto pr-2 border rounded-lg transition shadow-sm ${
+            gateDate ? 'border-blue-400 bg-blue-50' : 'bg-white border-gray-200'
+          }`}>
+              <input 
+                  type="date" 
+                  value={gateDate}
+                  onChange={(e) => setGateDate(e.target.value)}
+                  className={`flex-1 pl-3 pr-1 py-2 bg-transparent text-sm font-medium outline-none w-full sm:w-40 ${
+                    gateDate ? 'text-blue-700' : 'text-gray-700'
+                  }`}
+                  title="Filter by Date"
+              />
+              
+              {/* Clear Date Button */}
+              {gateDate && (
+                <button 
+                  onClick={() => setGateDate('')}
+                  className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full text-blue-400 hover:text-red-600 hover:bg-red-100 transition-colors text-sm font-bold ml-1"
+                  title="Clear Date Filter"
+                >
+                  ✕
+                </button>
+              )}
+          </div>
+
+          {/* Status Filter */}
+          <div className="relative w-full sm:w-auto">
+              <Filter size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+              <select 
+                  value={gateFilter}
+                  onChange={(e) => setGateFilter(e.target.value)}
+                  className="w-full sm:w-auto pl-9 pr-8 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-700 outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer appearance-none shadow-sm"
+              >
+                  <option value="All">All Statuses</option>
+                  <option value="Checked In">Returned</option>
+                  <option value="Checked Out">Checked-Out</option>
+              </select>
+          </div>
+        </div>
+      </div>
+
+      {/* Table Content */}
       <div className="overflow-x-auto">
         <table className="w-full text-left">
-          <thead className="bg-gray-50 text-xs font-bold text-gray-500 uppercase">
+          <thead className="bg-gray-50 text-sm font-bold text-gray-500 uppercase tracking-wider border-b border-gray-200">
             <tr>
               <th className="px-6 py-4">Student</th>
               <th className="px-6 py-4">Status</th>
               <th className="px-6 py-4">Time</th>
-              <th className="px-6 py-4">Destination/Reason</th>
+              <th className="px-6 py-4">Destination & Reason</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-50">
-            {filteredRecentLogs.map((log) => (
-              <tr key={log.id} className="hover:bg-gray-50 transition">
-                <td className="px-6 py-4">
-                  <p className="font-bold text-gray-800">{log.full_name || "Unknown"}</p>
-                  <p className="text-xs text-gray-400">{log.uid}</p>
-                </td>
-                <td className="px-6 py-4">
-                  <span className={`px-3 py-1 rounded-full text-xs font-bold ${
-                    log.status === 'out' ? 'bg-orange-100 text-orange-600' : 'bg-green-100 text-green-600'
-                  }`}>
-                    {log.status === 'out' ? 'OUT' : 'RETURNED'}
-                  </span>
-                </td>
-                <td className="px-6 py-4 text-sm text-gray-500">
-                  <div className="flex items-center gap-2">
-                      <Clock size={14} />
-                      {new Date(log.exit_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </div>
-                    <div className="text-xs text-gray-400 mt-1">
-                      {new Date(log.exit_time).toLocaleDateString()}
-                    </div>
-                </td>
-                <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate">
-                  <p className="text-sm font-medium text-gray-800">{log.destination || 'N/A'}</p>
-                  <p className="text-xs text-gray-500 truncate max-w-[150px]">{log.reason}</p>
+          <tbody className="divide-y divide-gray-100">
+            {filteredRecentLogs.length === 0 ? (
+              <tr>
+                <td colSpan="4" className="px-6 py-12 text-center text-gray-400 bg-gray-50/50">
+                  <div className="flex flex-col items-center gap-2">
+                    <Filter size={32} className="text-gray-300" />
+                    <p>No log records found.</p>
+                  </div>
                 </td>
               </tr>
-            ))}
+            ) : (
+              filteredRecentLogs.map((log) => (
+                <tr key={log.id} className="hover:bg-blue-50/50 transition-colors">
+                  <td className="px-6 py-4">
+                    <p className="font-bold text-gray-800">{log.full_name || "Unknown"}</p>
+                    <p className="text-sm text-gray-500 mt-0.5">{log.uid}</p>
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className={`px-2.5 py-1 rounded-md text-xs font-black uppercase tracking-wider ${
+                      log.status === 'out' ? 'bg-orange-100 text-orange-700 border border-orange-200' : 'bg-green-100 text-green-700 border border-green-200'
+                    }`}>
+                      {log.status === 'out' ? 'Checked Out' : 'Returned'}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-1.5 text-sm font-bold text-gray-700">
+                        <Clock size={14} className="text-gray-400" />
+                        {new Date(log.exit_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                      <div className="text-sm text-gray-400 mt-1 font-medium pl-5">
+                        {new Date(log.exit_time).toLocaleDateString()}
+                      </div>
+                  </td>
+                  <td className="px-6 py-4 max-w-xs">
+                    <p className="text-sm font-bold text-gray-800 truncate">{log.destination || 'N/A'}</p>
+                    <p className="text-sm text-gray-500 truncate mt-0.5">{log.reason}</p>
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>
     </div>
 
-    {/* Students Out Modal */}
+    {/* --- STUDENTS OUT MODAL --- */}
     {showOutModal && (
-      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 backdrop-blur-sm">
-        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-slide-up">
-          <div className="bg-red-600 p-4 flex justify-between items-center text-white">
-            <h3 className="font-bold text-lg">⚠️ Absent Students</h3>
-            <div className="relative w-full md:w-64">
-                <Search size={16} className="absolute left-3 top-2.5 text-gray-400" />
-                <input 
-                    type="text" 
-                    placeholder="Search Absent Student..." 
-                    value={absentSearch}
-                    onChange={(e) => setAbsentSearch(e.target.value)}
-                    className="text-black w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-red-100 focus:border-red-300 transition"
-                />
+      <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm p-4 animate-fade-in">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl overflow-hidden animate-slide-up flex flex-col max-h-[85vh]">
+          
+          <div className="bg-gradient-to-r from-red-600 to-red-700 p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 text-white">
+            <div>
+              <h3 className="font-black text-xl flex items-center gap-2">
+                <AlertTriangle size={20} /> Active Absences
+              </h3>
+              <p className="text-red-200 text-sm mt-1">Students currently off-campus</p>
             </div>
-            <button onClick={() => setShowOutModal(false)} className="hover:bg-red-700 p-1 rounded-full transition">✕</button>
+            
+            <div className="flex items-center gap-4 w-full md:w-auto">
+              <div className="relative w-full md:w-64">
+                  <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                  <input 
+                      type="text" 
+                      placeholder="Search by Name, Room or UID..." 
+                      value={absentSearch}
+                      onChange={(e) => setAbsentSearch(e.target.value)}
+                      className="text-black w-full pl-9 pr-4 py-2 bg-white rounded-lg text-sm outline-none focus:ring-2 focus:ring-red-300 transition shadow-sm"
+                  />
+              </div>
+              <button 
+                onClick={() => {setShowOutModal(false); setAbsentSearch('');}} 
+                className="hover:bg-red-800 p-2 rounded-lg transition-colors bg-red-700/50 shrink-0"
+              >
+                ✕
+              </button>
+            </div>
           </div>
-          <div className="p-4 max-h-[60vh] overflow-y-auto">
-            {outStudents.length === 0 ? (
-              <p className="text-center text-gray-500 py-4">No students are currently out.</p>
+
+          <div className="flex-1 overflow-y-auto p-0 bg-gray-50">
+            {filteredOutStudents.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-64 text-gray-400">
+                <div className="bg-green-100 text-green-600 p-4 rounded-full mb-3"><Users size={32}/></div>
+                <p className="font-bold text-gray-600">No Data</p>
+                <p className="text-sm mt-1">No student info found.</p>
+              </div>
             ) : (
               <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="border-b text-xs text-gray-400 uppercase">
-                    <th className="p-2">Name</th>
-                    <th className="p-2">UID</th>
-                    <th className="p-2">Phone No.</th>
-                    <th className="p-2">Home Address</th>
-                    <th className="p-2">Action</th>
+                <thead className="bg-white sticky top-0 shadow-sm z-10">
+                  <tr className="border-b border-gray-200 text-sm font-bold text-gray-400 uppercase tracking-wider">
+                    <th className="p-4 pl-6">Student Details</th>
+                    <th className="p-4">Room No.</th>
+                    <th className="p-4">Phone No.</th>
+                    <th className="p-4">Home Address</th>
+                    <th className="p-4 pr-6 text-right">Emergency Action</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-gray-100 bg-white">
                   {filteredOutStudents.map((student) => (
-                    <tr key={student.uid} className="border-b last:border-0 hover:bg-gray-50">
-                      <td className="p-2 font-medium text-gray-800">{student.full_name}</td>
-                      <td className="p-3 text-sm text-gray-500">{student.uid}</td>
-                      <td className="p-3 text-sm text-gray-500">{student.phone_no}</td>
-                      <td className="p-3 text-sm text-gray-500">{student.address}</td>
-                      <td className="p-3 text-sm text-gray-500"><button className="w-full bg-green-600 rounded-xl text-white active:scale-95" onClick={() => checkinOverride(student.uid)}>check-in</button></td>
+                    <tr key={student.uid} className="hover:bg-red-50/30 transition-colors">
+                      <td className="p-4 pl-6">
+                        <p className="font-bold text-gray-800">{student.full_name}</p>
+                        <p className="text-sm text-gray-500 font-medium mt-0.5">{student.uid}</p>
+                      </td>
+                      
+                      {/* POLISHED ROOM NUMBER BADGE */}
+                      <td className="p-4">
+                        {student.room_no ? (
+                          <span className="bg-gray-100 text-gray-700 font-bold px-2.5 py-1 rounded-md text-sm border border-gray-200 whitespace-nowrap">
+                            {student.room_no}
+                          </span>
+                        ) : (
+                          <span className="text-gray-400 text-sm italic">N/A</span>
+                        )}
+                      </td>
+
+                      <td className="p-4 text-sm text-gray-600 font-medium whitespace-nowrap">{student.phone_no || 'N/A'}</td>
+                      <td className="p-4 text-sm text-gray-500 max-w-xs truncate" title={student.address}>{student.address || 'N/A'}</td>
+                      <td className="p-4 pr-6 text-right">
+                        <button 
+                          className="bg-green-50 hover:bg-green-600 text-green-700 hover:text-white border border-green-200 px-4 py-2 rounded-lg text-sm font-bold transition-all active:scale-95 whitespace-nowrap" 
+                          onClick={() => checkinOverride(student.uid)}
+                        >
+                          Force Check-In
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -275,8 +423,9 @@ const OvernightLogTab= () => {
         </div>
       </div>
     )}
-  </div>)
-  };
+  </div>
+  );
+};
 
 const GrievancesTab = () => {
   const [grievances, setGrievances] = useState([]);
@@ -286,6 +435,7 @@ const GrievancesTab = () => {
   const [filterStatus, setFilterStatus] = useState('All');
   const [searchTerm, setSearchTerm] = useState('');
   const [evidenceModal, setEvidenceModal] = useState(null);
+  const [isLocked, setIsLocked] = useState(false);
 
   useEffect(() => {
     fetchGrievances();
@@ -301,50 +451,176 @@ const GrievancesTab = () => {
       .finally(() => setLoading(false));
   };
 
-  const handleStatusUpdate = async (id, newStatus) => {
-    if (newStatus === 'Resolved') {
-      if (!window.confirm("Are you sure you want to mark this issue as Resolved? It will be moved to History.")) {
-        return; 
-      }
-    }
-    const updatedList = grievances.map(g => 
-      g.id === id ? { ...g, status: newStatus } : g
-    );
-    setGrievances(updatedList);
-
+  // 1. STATUS UPDATE LOGIC
+  const executeStatusUpdate = async (id, newStatus) => {
     try {
       await axios.put(`http://localhost:3001/api/warden/grievances/${id}`, { status: newStatus });
-      if (newStatus === 'Resolved') fetchGrievances(); // Refresh to get server timestamp
+      // Optimistic UI update or fetch fresh data
+      if (newStatus === 'Resolved') {
+        toast.success("Issue resolved & evidence deleted.");
+        fetchGrievances(); 
+      } else {
+        setGrievances(grievances.map(g => g.id === id ? { ...g, status: newStatus } : g));
+        toast.success(`Status updated to ${newStatus}`);
+      }
     } catch (err) {
-      alert("Failed to update status");
+      toast.error("Failed to update status");
       fetchGrievances(); 
     }
   };
 
-  const handleDelete = async (id) => {
-    if(!window.confirm("Delete this specific record permanently?")) return;
-
-    try {
-      await axios.delete(`http://localhost:3001/api/warden/grievances/${id}`);
-      setGrievances(grievances.filter(g => g.id !== id)); 
-    } catch (err) {
-      alert("Failed to delete record");
+  const handleStatusUpdate = (id, newStatus) => {
+    if (newStatus === 'Resolved') {
+      // Custom Confirmation Toast for Resolving
+      toast((t) => (
+        <div className="flex flex-col gap-3 min-w-[250px]">
+          <div className="flex items-center gap-2 text-gray-800">
+            <CheckCircle size={18} className="text-green-500" />
+            <p className="font-bold text-sm">Mark as Resolved?</p>
+          </div>
+          <p className="text-sm text-gray-500">This moves it to history and deletes the evidence file.</p>
+          <div className="flex gap-2 justify-end mt-1">
+            <button onClick={() => toast.dismiss(t.id)} className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-sm font-bold hover:bg-gray-200 transition-colors">Cancel</button>
+            <button 
+              onClick={() => { toast.dismiss(t.id); executeStatusUpdate(id, newStatus);}}
+              className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm font-bold hover:bg-green-700 transition-colors"
+            >
+              Confirm
+            </button>
+          </div>
+        </div>
+      ), { id: `resolve-${id}`, duration: Infinity });
+    } else {
+      executeStatusUpdate(id, newStatus);
     }
   };
 
-  const handleClearHistory = async () => {
-    if(!window.confirm("⚠️ WARNING: This will permanently delete ALL resolved complaints. This cannot be undone.")) return;
-
-    try {
-      await axios.delete('http://localhost:3001/api/warden/grievances/clear-history');
-      setGrievances(grievances.filter(g => g.status !== 'Resolved'));
-      alert("History Cleared Successfully");
-    } catch (err) {
-      alert("Failed to clear history");
-    }
+  // 2. DELETE SINGLE RECORD LOGIC
+  const executeDelete = async (id) => {
+    toast.promise(
+      axios.delete(`http://localhost:3001/api/warden/grievances/${id}`),
+      {
+        loading: 'Deleting record...',
+        success: 'Record permanently deleted',
+        error: 'Failed to delete record'
+      }
+    ).then(() => setGrievances(grievances.filter(g => g.id !== id)));
   };
 
-  
+  const handleDelete = (id) => {
+    toast((t) => (
+      <div className="flex flex-col gap-3 min-w-[250px]">
+        <div className="flex items-center gap-2 text-red-600">
+          <Trash2 size={18} />
+          <p className="font-bold text-sm">Delete this record?</p>
+        </div>
+        <div className="flex gap-2 justify-end mt-1">
+          <button onClick={() => toast.dismiss(t.id)} className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-sm font-bold hover:bg-gray-200 transition">Cancel</button>
+          <button onClick={() => { toast.dismiss(t.id); executeDelete(id); }} className="px-3 py-1.5 bg-red-600 text-white rounded-lg text-sm font-bold hover:bg-red-700 transition">Delete</button>
+        </div>
+      </div>
+    ), { id: `delete-${id}`, duration: Infinity });
+  };
+
+  // 3. CLEAR ALL HISTORY LOGIC
+  const executeClearHistory = async () => {
+    toast.promise(
+      axios.delete('http://localhost:3001/api/warden/grievances/clear-history'),
+      {
+        loading: 'Wiping history...',
+        success: 'History cleared successfully',
+        error: 'Failed to clear history'
+      }
+    ).then(() => setGrievances(grievances.filter(g => g.status !== 'Resolved')));
+  };
+
+  const handleClearHistory = () => {
+    setIsLocked(true);
+    toast((t) => (
+      <div className="flex flex-col gap-3 min-w-[280px]">
+        <div className="flex items-start gap-2 text-red-600">
+          <AlertOctagon size={24} className="shrink-0" />
+          <div>
+            <p className="font-bold text-sm">Clear All History?</p>
+            <p className="text-sm text-gray-500 mt-1">This permanently deletes all resolved complaints. It cannot be undone.</p>
+          </div>
+        </div>
+        <div className="flex gap-2 justify-end mt-2">
+          <button onClick={() => {toast.dismiss(t.id);setIsLocked(false);}} className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-sm font-bold hover:bg-gray-200 transition">Cancel</button>
+          <button onClick={() => { toast.dismiss(t.id); executeClearHistory(); setIsLocked(false);}} className="px-3 py-1.5 bg-red-600 text-white rounded-lg text-sm font-bold hover:bg-red-700 transition">Wipe History</button>
+        </div>
+      </div>
+    ), { id: 'clear-history', duration: Infinity });
+  };
+
+  // 4. RESOLVE ALL LOGIC
+  const executeResolveAll = async (itemsToResolve) => {
+    toast.promise(
+      Promise.all(itemsToResolve.map(g => axios.put(`http://localhost:3001/api/warden/grievances/${g.id}`, { status: 'Resolved' }))),
+      {
+        loading: `Resolving ${itemsToResolve.length} complaints...`,
+        success: `Successfully resolved ${itemsToResolve.length} complaints!`,
+        error: 'Some requests failed. Please try again.'
+      }
+    ).then(() => fetchGrievances());
+  };
+
+  const handleResolveAll = () => {
+    const itemsToResolve = filteredGrievances.filter(g => g.status !== 'Resolved');
+    if (itemsToResolve.length === 0) return;
+    setIsLocked(true);
+    toast((t) => (
+      <div className="flex flex-col gap-3 min-w-[280px]">
+        <div className="flex items-center gap-2 text-green-600">
+          <CheckCircle size={20} />
+          <p className="font-bold text-sm">Resolve {itemsToResolve.length} Complaints?</p>
+        </div>
+        <p className="text-sm text-gray-500">This will mark all visible complaints as Resolved and delete their attached evidence.</p>
+        <div className="flex gap-2 justify-end mt-2">
+          <button onClick={() => {toast.dismiss(t.id);setIsLocked(false);}} className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-sm font-bold hover:bg-gray-200 transition">Cancel</button>
+          <button onClick={() => { toast.dismiss(t.id);setIsLocked(false);executeResolveAll(itemsToResolve); }} className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm font-bold hover:bg-green-700 transition">Resolve All</button>
+        </div>
+      </div>
+    ), { id: 'resolve-all', duration: Infinity });
+
+  };
+
+  // 5. ASSIGN ALL LOGIC
+  const executeAssignAll = async (itemsToAssign) => {
+    toast.promise(
+      Promise.all(itemsToAssign.map(g => axios.put(`http://localhost:3001/api/warden/grievances/${g.id}`, { status: 'Assigned' }))),
+      {
+        loading: `Assigning ${itemsToAssign.length} complaints...`,
+        success: `Successfully assigned ${itemsToAssign.length} complaints!`,
+        error: 'Some requests failed. Please try again.'
+      }
+    ).then(() => fetchGrievances());
+  };
+
+  const handleAssignAll = () => {
+    // Only target items that are currently "Pending"
+    const itemsToAssign = filteredGrievances.filter(g => g.status === 'Pending');
+    if (itemsToAssign.length === 0) {
+      toast.error("No pending complaints visible to assign.");
+      return;
+    }
+    setIsLocked(true);
+    toast((t) => (
+      <div className="flex flex-col gap-3 min-w-[280px]">
+        <div className="flex items-center gap-2 text-blue-600">
+          <UserCheck size={20} />
+          <p className="font-bold text-sm">Assign {itemsToAssign.length} Complaints?</p>
+        </div>
+        <p className="text-sm text-gray-500">This will mark all visible 'Pending' complaints as 'Assigned'.</p>
+        <div className="flex gap-2 justify-end mt-2">
+          <button onClick={() => {toast.dismiss(t.id);setIsLocked(false);}} className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-sm font-bold hover:bg-gray-200 transition">Cancel</button>
+          <button onClick={() => { toast.dismiss(t.id); executeAssignAll(itemsToAssign);setIsLocked(false); }} className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 transition">Assign All</button>
+        </div>
+      </div>
+    ), { id: 'assign-all', duration: Infinity });
+  };
+
+  // FILTERS
   const filteredGrievances = grievances.filter(g => {
     const isResolved = g.status === 'Resolved';
     if (viewMode === 'active' && isResolved) return false;
@@ -353,20 +629,24 @@ const GrievancesTab = () => {
         if (g.status !== filterStatus) return false;
     }
     if (filterCategory !== 'All' && g.category !== filterCategory) return false;
+    
+    // ✨ NEW: Search by UID, Name, OR Room Number
     if (searchTerm !== '') {
         const lowerTerm = searchTerm.toLowerCase();
-        const matchUid = g.uid.toLowerCase().includes(lowerTerm);
-        const matchName = g.full_name ? g.full_name.toLowerCase().includes(lowerTerm) : false;
-        if (!matchUid && !matchName) return false;
+        const matchUid = (g.uid || '').toLowerCase().includes(lowerTerm);
+        const matchName = (g.full_name || '').toLowerCase().includes(lowerTerm);
+        const matchRoom = (g.room_no || '').toLowerCase().includes(lowerTerm);
+        
+        if (!matchUid && !matchName && !matchRoom) return false;
     }
     return true;
   });
 
   const getStatusColor = (status) => {
     switch(status) {
-      case 'Pending': return 'bg-red-50 text-red-600 border-red-100';
-      case 'Assigned': return 'bg-blue-50 text-blue-600 border-blue-100';
-      case 'Resolved': return 'bg-green-50 text-green-600 border-green-100';
+      case 'Pending': return 'bg-orange-50 text-orange-700 border-orange-200';
+      case 'Assigned': return 'bg-blue-50 text-blue-700 border-blue-200';
+      case 'Resolved': return 'bg-green-50 text-green-700 border-green-200';
       default: return 'bg-gray-50 text-gray-600';
     }
   };
@@ -374,131 +654,93 @@ const GrievancesTab = () => {
   // --- EVIDENCE MODAL COMPONENT ---
   const EvidenceModal = () => {
     if (!evidenceModal) return null;
-
     const isVideo = evidenceModal.endsWith('.mp4') || evidenceModal.endsWith('.webm');
 
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in">
-        <div className="relative bg-white rounded-2xl overflow-hidden max-w-3xl w-full shadow-2xl">
-          
-          {/* Header */}
+        <div className="relative bg-white rounded-2xl overflow-hidden max-w-4xl w-full shadow-2xl animate-slide-up">
           <div className="flex justify-between items-center p-4 border-b border-gray-100 bg-gray-50">
-            <h3 className="font-bold text-gray-700">Evidence Review</h3>
-            <button 
-              onClick={() => setEvidenceModal(null)}
-              className="p-2 bg-white rounded-full hover:bg-gray-200 transition"
-            >
-              <X size={20} />
-            </button>
+            <h3 className="font-bold text-gray-700 flex items-center gap-2"><ImageIcon size={18}/> Evidence Review</h3>
+            <button onClick={() => setEvidenceModal(null)} className="p-2 bg-white rounded-full hover:bg-gray-200 transition text-gray-500"><X size={20} /></button>
           </div>
-
-          {/* Content */}
-          <div className="p-0 bg-black flex justify-center items-center min-h-[300px]">
+          <div className="p-0 bg-black flex justify-center items-center min-h-[400px]">
             {isVideo ? (
-              <video 
-                src={`http://localhost:3001${evidenceModal}`} 
-                controls 
-                autoPlay 
-                className="max-h-[60vh] w-full"
-              />
+              <video src={`http://localhost:3001${evidenceModal}`} controls autoPlay className="max-h-[70vh] w-full" />
             ) : (
-              <img 
-                src={`http://localhost:3001${evidenceModal}`} 
-                alt="Evidence" 
-                className="max-h-[60vh] object-contain"
-              />
+              <img src={`http://localhost:3001${evidenceModal}`} alt="Evidence" className="max-h-[70vh] object-contain" />
             )}
           </div>
-          
-          {/* Footer */}
-          <div className="p-4 bg-gray-50 border-t border-gray-100 text-center">
-            <a 
-              href={`http://localhost:3001${evidenceModal}`} 
-              target="_blank" 
-              rel="noreferrer"
-              className="text-xs font-bold text-blue-600 hover:underline"
-            >
-              Open Original File
+          <div className="p-4 bg-gray-50 border-t border-gray-100 flex justify-between items-center">
+            <p className="text-sm text-gray-500 font-medium">Original file hosted on local server</p>
+            <a href={`http://localhost:3001${evidenceModal}`} target="_blank" rel="noreferrer" className="text-sm font-bold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition">
+              Open Full Size &rarr;
             </a>
           </div>
         </div>
       </div>
     );
   };
- //Resolve all
-  const handleResolveAll = async () => {
-    // 1. Get only the Unresolved items from the current filtered view
-    const itemsToResolve = filteredGrievances.filter(g => g.status !== 'Resolved');
-
-    if (itemsToResolve.length === 0) return;
-
-    // 2. Confirmation
-    const confirmMsg = `Are you sure you want to mark ${itemsToResolve.length} complaints as RESOLVED? \n\nThis will remove them from the active list and DELETE any attached evidence.`;
-    if (!window.confirm(confirmMsg)) return;
-
-    setLoading(true);
-
-    try {
-      // 3. Process all updates in parallel
-      // We map each item to an axios PUT request
-      await Promise.all(itemsToResolve.map(g => 
-        axios.put(`http://localhost:3001/api/warden/grievances/${g.id}`, { status: 'Resolved' })
-      ));
-
-      // 4. Success & Refresh
-      alert(`Successfully resolved ${itemsToResolve.length} complaints.`);
-      fetchGrievances(); // Refresh list to update UI
-    } catch (err) {
-      console.error(err);
-      alert("Some requests failed. Please refresh and try again.");
-      fetchGrievances();
-    } finally {
-      setLoading(false);
-    }
-  };
 
   return (
     <div className="animate-fade-in">
       <EvidenceModal />
-      <div className="flex justify-between items-center mb-6">
+
+      {isLocked && (
+        <div className="fixed inset-0 z-[40] bg-black/10 backdrop-blur-[2px] cursor-not-allowed" />
+      )}
+      
+      {/* HEADER */}
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-6 gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Grievances</h1>
-          <p className="text-sm text-gray-500">
-            {viewMode === 'active' ? 'Pending Complaints' : 'Resolved history'}
+          <p className="text-sm text-gray-500 mt-1">
+            {viewMode === 'active' ? 'Manage active campus complaints.' : 'Review resolved complaint history.'}
           </p>
         </div>
         
-        <div className="flex gap-3">
-          <div className="relative flex-1 md:flex-none">
-            <Search size={16} className="absolute left-3 top-2.5 text-gray-400" />
+        {/* VIEW TOGGLE */}
+        <div className="bg-gray-100 p-1 rounded-xl flex w-full lg:w-auto">
+          <button 
+            onClick={() => setViewMode('active')}
+            className={`flex-1 lg:flex-none px-6 py-2 rounded-lg text-sm font-bold transition-all ${
+              viewMode === 'active' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            Active Complaints
+          </button>
+          <button 
+            onClick={() => setViewMode('history')}
+            className={`flex-1 lg:flex-none px-6 py-2 rounded-lg text-sm font-bold transition-all ${
+              viewMode === 'history' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            Resolved History
+          </button>
+        </div>
+      </div>
+
+      {/* TOOLBAR */}
+      <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 mb-6 flex flex-col md:flex-row gap-3 items-center justify-between">
+        <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+          {/* Search */}
+          <div className="relative w-full sm:w-64">
+            <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
             <input 
               type="text"
-              placeholder="Search UID or Name..."
+              placeholder="Search UID, Name or Room_no..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-9 pr-4 py-2 w-full md:w-48 bg-white border border-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-100 transition-all"
+              className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 transition shadow-sm"
             />
           </div>
-          {viewMode === 'active' && (
-            <div className="relative">
-              <ListFilter size={16} className="absolute left-3 top-2.5 text-gray-400" />
-              <select 
-                value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value)}
-                className="pl-9 pr-8 py-2 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-700 outline-none focus:ring-2 focus:ring-blue-100 cursor-pointer appearance-none"
-              >
-                <option value="All">All Status</option>
-                <option value="Pending">Pending</option>
-                <option value="Assigned">Assigned</option>
-              </select>
-            </div>
-          )}
-          <div className="relative">
-            <Filter size={16} className="absolute left-3 top-2.5 text-gray-400" />
+          
+          {/* Category Filter */}
+          <div className="relative w-full sm:w-auto">
+            <Filter size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
             <select 
               value={filterCategory}
               onChange={(e) => setFilterCategory(e.target.value)}
-              className="pl-9 pr-4 py-2 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-700 outline-none focus:ring-2 focus:ring-blue-100 cursor-pointer appearance-none"
+              className="w-full sm:w-auto pl-9 pr-8 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer appearance-none shadow-sm"
             >
               <option value="All">All Categories</option>
               <option value="Electrical">Electrical</option>
@@ -507,146 +749,175 @@ const GrievancesTab = () => {
               <option value="Other">Other</option>
             </select>
           </div>
-          {/* --- NEW: RESOLVE ALL BUTTON --- */}
+
+          {/* Status Filter (Active View Only) */}
+          {viewMode === 'active' && (
+            <div className="relative w-full sm:w-auto">
+              <ListFilter size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+              <select 
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                className="w-full sm:w-auto pl-9 pr-8 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer appearance-none shadow-sm"
+              >
+                <option value="All">All Status</option>
+                <option value="Pending">Pending</option>
+                <option value="Assigned">Assigned</option>
+              </select>
+            </div>
+          )}
+        </div>
+
+        {/* BULK ACTIONS */}
+        <div className="w-full md:w-auto flex flex-col sm:flex-row justify-end gap-2">
+          
+          {/* ✨ NEW: Assign All Visible */}
+          {viewMode === 'active' && filteredGrievances.some(g => g.status === 'Pending') && (
+            <button 
+              onClick={handleAssignAll}
+              className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg text-sm font-bold shadow-sm hover:bg-blue-100 active:scale-95 transition"
+              title="Mark all visible pending complaints as Assigned"
+            >
+              <UserCheck size={16} /> 
+              <span>Assign All ({filteredGrievances.filter(g => g.status === 'Pending').length})</span>
+            </button>
+          )}
+
+          {/* Resolve All Visible (Updated to Green!) */}
           {viewMode === 'active' && filteredGrievances.length > 0 && (
             <button 
               onClick={handleResolveAll}
-              className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-xl text-sm font-bold shadow-md hover:bg-green-700 active:scale-95 transition"
+              className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2 bg-green-600 text-white rounded-lg text-sm font-bold shadow-md hover:bg-green-700 active:scale-95 transition"
               title="Resolve all currently visible complaints"
             >
               <CheckCircle size={16} /> 
-              <span className="hidden md:inline">Resolve All ({filteredGrievances.length})</span>
+              <span>Resolve All ({filteredGrievances.length})</span>
             </button>
-          )}
-          {viewMode === 'history' && filteredGrievances.length > 0 && (
-             <button 
-               onClick={handleClearHistory}
-               className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 border border-red-100 rounded-lg text-sm font-bold hover:bg-red-100 transition"
-             >
-               <LogOut size={16} /> Clear All History
-             </button>
           )}
 
-          <div className="bg-gray-100 p-1 rounded-xl flex h-fit">
+          {/* Wipe History */}
+          {viewMode === 'history' && filteredGrievances.length > 0 && (
             <button 
-              onClick={() => setViewMode('active')}
-              className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${
-                viewMode === 'active' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'
-              }`}
+              onClick={handleClearHistory}
+              className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2 bg-red-50 text-red-600 border border-red-200 rounded-lg text-sm font-bold hover:bg-red-100 hover:border-red-300 transition active:scale-95"
             >
-              Active
+              <Trash2 size={16} /> Wipe History
             </button>
-            <button 
-              onClick={() => setViewMode('history')}
-              className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${
-                viewMode === 'history' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              History
-            </button>
-          </div>
+          )}
         </div>
       </div>
 
+      {/* COMPLAINTS LIST */}
       <div className="space-y-4">
         {filteredGrievances.length === 0 ? (
-          <div className="text-center py-16 bg-white rounded-2xl border border-gray-100 border-dashed">
-            <p className="text-gray-400 font-medium">No {viewMode} grievances found.</p>
+          <div className="flex flex-col items-center justify-center py-20 bg-gray-50/50 rounded-2xl border border-gray-200 border-dashed">
+             <div className="bg-white p-4 rounded-full shadow-sm mb-4">
+                <CheckCircle size={32} className="text-green-500" />
+             </div>
+             <p className="text-gray-800 font-bold text-lg">Inbox Zero</p>
+             <p className="text-gray-400 font-medium text-sm mt-1">No {viewMode} grievances match your filters.</p>
           </div>
         ) : (
           filteredGrievances.map((g) => (
-            <div key={g.id} className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm flex flex-col md:flex-row gap-6 hover:shadow-md transition">
+            <div key={g.id} className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm flex flex-col md:flex-row gap-6 hover:shadow-md transition group">
               
-              {/* User Info */}
-              <div className="flex gap-4 min-w-[200px]">
-                <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center text-gray-500 font-bold text-xl">
-                  {g.full_name ? g.full_name.charAt(0) : '?'}
+              {/* User Info Column */}
+              <div className="flex gap-4 min-w-[220px]">
+                <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center font-black text-xl border border-blue-100 shadow-sm shrink-0">
+                  {g.full_name ? g.full_name.charAt(0).toUpperCase() : '?'}
                 </div>
                 <div>
                   <h3 className="font-bold text-gray-800">{g.full_name || "Unknown"}</h3>
-                  <p className="text-xs text-gray-400">{g.uid}</p>
-                  <p className="text-xs text-gray-500 mt-1">Room: <span className="font-semibold">{g.room_no}</span></p>
+                  <p className="text-sm text-gray-500 font-medium mt-0.5">{g.uid}</p>
+                  <div className="mt-2 inline-flex items-center gap-1.5 px-2 py-1 bg-gray-100 text-gray-600 rounded-md text-sm font-bold border border-gray-200">
+                    🚪 {g.room_no || 'N/A'}
+                  </div>
                 </div>
               </div>
 
               {/* Complaint Content */}
-              <div className="flex-1">
-                <div className="flex justify-between items-start mb-2">
-                  <div className="flex items-center gap-2">
-                     <span className="text-xs font-bold text-gray-400 uppercase">Description</span>
-                     <span className="text-[10px] px-2 py-0.5 bg-gray-100 text-gray-600 rounded-md border border-gray-200">
+              <div className="flex-1 flex flex-col justify-between">
+                <div>
+                  <div className="flex justify-between items-start mb-3">
+                    <span className="text-sm px-2.5 py-1 bg-gray-100 text-gray-600 rounded-md border border-gray-200 font-bold uppercase tracking-wider">
                         {g.category}
-                     </span>
+                    </span>
+                    
+                    {viewMode === 'active' ? (
+                      <div className="relative"> 
+                        <select 
+                          value={g.status}
+                          onChange={(e) => handleStatusUpdate(g.id, e.target.value)}
+                          // ✨ Changed text-center to pl-3 pr-8 to make room for the icon!
+                          className={`text-sm text-center pr-3 py-1.5 rounded-lg font-bold border outline-none cursor-pointer appearance-none shadow-sm ${getStatusColor(g.status)}`}
+                        >
+                          <option value="Pending">Pending</option>
+                          <option value="Assigned">Assigned</option>
+                          <option value="Resolved">✓ Mark Resolved</option>
+                        </select>
+                        
+                        {/* ✨ The Custom Dropdown Arrow */}
+                        <ChevronDown 
+                          size={14} 
+                          className="absolute right-2.5 top-1/2 transform -translate-y-1/2 pointer-events-none opacity-60" 
+                        />
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-3">
+                          <span className="px-3 py-1.5 rounded-lg text-sm font-black uppercase tracking-wider bg-green-50 text-green-700 border border-green-200">
+                             Resolved
+                          </span>
+                          <button 
+                              onClick={() => handleDelete(g.id)}
+                              className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition opacity-0 group-hover:opacity-100 focus:opacity-100"
+                              title="Delete Record"
+                          >
+                              <Trash2 size={16} />
+                          </button>
+                      </div>
+                    )}
                   </div>
                   
-                  {viewMode === 'active' ? (
-                    <select 
-                      value={g.status}
-                      onChange={(e) => handleStatusUpdate(g.id, e.target.value)}
-                      className={`text-xs px-3 py-1 rounded-full font-bold border outline-none cursor-pointer ${getStatusColor(g.status)}`}
-                    >
-                      <option value="Pending">Pending</option>
-                      <option value="Assigned">Assigned</option>
-                      <option value="Resolved">Resolved</option>
-                    </select>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                        <span className="px-3 py-1 rounded-full text-xs font-bold bg-green-50 text-green-600 border border-green-100">
-                        Resolved
-                        </span>
-                        <button 
-                            onClick={() => handleDelete(g.id)}
-                            className="p-1.5 text-red-400 hover:bg-red-50 rounded-lg transition"
-                            title="Delete This Record"
-                        >
-                            <Trash2 size={16} />
-                        </button>
-                    </div>
-                  )}
+                  <p className="text-gray-700 text-sm leading-relaxed mb-4">{g.description}</p>
                 </div>
                 
-                <p className="text-gray-700 text-sm mb-4 leading-relaxed">{g.description}</p>
-                
-                <div className="flex gap-8 items-end border-t border-gray-50 pt-4 mt-2">
+                {/* Timestamps & Evidence */}
+                <div className="flex gap-6 items-end border-t border-gray-100 pt-4 mt-2">
                   <div>
-                    <p className="text-[10px] uppercase font-bold text-gray-400 mb-1">Logged On</p>
-                    <div className="flex items-center gap-2 text-gray-700">
+                    <p className="text-sm uppercase font-bold text-gray-400 mb-1">Logged On</p>
+                    <div className="flex items-center gap-1.5 text-gray-700">
                       <Clock size={14} className="text-gray-400"/>
-                      <span className="text-sm font-medium">
+                      <span className="text-sm font-bold">
                         {new Date(g.date_logged).toLocaleDateString()}
                       </span>
                     </div>
                   </div>
 
-                  {/* Resolved Date */}
                   {viewMode === 'history' && g.date_resolved && (
                     <div>
-                      <p className="text-[10px] uppercase font-bold text-green-600 mb-1">Resolved On</p>
-                      <div className="flex items-center gap-2 text-green-700">
+                      <p className="text-sm uppercase font-bold text-green-600 mb-1">Resolved On</p>
+                      <div className="flex items-center gap-1.5 text-green-700">
                         <CheckCircle size={14} />
                         <span className="text-sm font-bold">
                           {new Date(g.date_resolved).toLocaleDateString()}
                         </span>
-                        <span className="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-md">
+                        <span className="text-sm text-green-600 font-bold ml-1">
                           {new Date(g.date_resolved).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                         </span>
                       </div>
                     </div>
                   )}
 
-                  {/* Evidence Icon */}
                   <div className="ml-auto">
                     {g.img_url ? (
                       <button 
                         onClick={() => setEvidenceModal(g.img_url)}
-                        className="w-10 h-10 bg-blue-50 hover:bg-blue-100 text-blue-500 rounded-lg border border-blue-200 flex items-center justify-center transition-all"
-                        title="View Evidence"
+                        className="h-9 px-3 bg-blue-50 hover:bg-blue-600 hover:text-white text-blue-600 rounded-lg border border-blue-200 flex items-center gap-2 transition-all text-sm font-bold shadow-sm"
                       >
-                        {g.img_url.endsWith('.mp4') ? <FileVideo size={18} /> : <ImageIcon size={18} />}
+                        {g.img_url.endsWith('.mp4') ? <><FileVideo size={16} /> View Video</> : <><ImageIcon size={16} /> View Photo</>}
                       </button>
                     ) : (
-                      <div className="w-10 h-10 bg-gray-50 rounded-lg border border-gray-200 flex items-center justify-center text-gray-300 cursor-not-allowed" title="No Evidence">
-                        <ImageIcon size={18} />
+                      <div className="h-9 px-3 bg-gray-50 rounded-lg border border-gray-200 flex items-center gap-2 text-gray-400 cursor-not-allowed text-sm font-bold">
+                        <ImageIcon size={16} /> No Evidence
                       </div>
                     )}
                   </div>
@@ -664,10 +935,70 @@ const StudentMgmtTab = () => {
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  
+  const [uploadingStudents, setUploadingStudents] = useState(false);
+
+  // ✨ NEW: Academic Filters
+  const [filterBatch, setFilterBatch] = useState('All');
+  const [filterBranch, setFilterBranch] = useState('All');
+
   // Edit State
-  const [editingId, setEditingId] = useState(null); // ID of student being edited
-  const [editForm, setEditForm] = useState({}); // Temp data while editing
+  const [editingId, setEditingId] = useState(null); 
+  const [editForm, setEditForm] = useState({}); 
+
+  // ✨ NEW: Add Student State
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newStudent, setNewStudent] = useState({
+    uid: '', full_name: '', dob: '', phone_no: '', room_no: '', batch: '', branch: '', address: ''
+  });
+  
+  // ✨ NEW: The Invisible Shield
+  const [isLocked, setIsLocked] = useState(false);
+
+  // --- ADD STUDENT LOGIC ---
+  const handleAddStudent = async (e) => {
+    e.preventDefault();
+    toast.promise(
+      axios.post('http://localhost:3001/api/warden/students', newStudent),
+      {
+        loading: 'Adding student...',
+        success: (res) => {
+          fetchStudents();
+          setShowAddModal(false);
+          setNewStudent({ uid: '', full_name: '', dob: '', phone_no: '', room_no: '', batch: '', branch: '', address: '' }); // Reset form
+          return res.data.message;
+        },
+        error: (err) => err.response?.data?.error || 'Failed to add student.',
+      }
+    );
+  };
+
+  // --- DELETE STUDENT LOGIC ---
+  const handleDelete = (student) => {
+    setIsLocked(true); // Lock the screen!
+    
+    toast((t) => (
+      <div className="flex flex-col gap-3 min-w-[280px]">
+        <div className="flex items-center gap-2 text-red-600">
+          <Trash2 size={20} />
+          <p className="font-bold text-sm">Delete {student.full_name}?</p>
+        </div>
+        <p className="text-xs text-gray-500">This will permanently remove <b>{student.uid}</b> from the system.</p>
+        <div className="flex gap-2 justify-end mt-2">
+          <button onClick={() => { toast.dismiss(t.id); setIsLocked(false); }} className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs font-bold hover:bg-gray-200 transition">Cancel</button>
+          <button onClick={() => { 
+            toast.dismiss(t.id); 
+            setIsLocked(false);
+            
+            toast.promise(
+              axios.delete(`http://localhost:3001/api/warden/students/${student.uid}`),
+              { loading: 'Deleting...', success: 'Student deleted!', error: 'Failed to delete student.' }
+            ).then(() => fetchStudents());
+
+          }} className="px-3 py-1.5 bg-red-600 text-white rounded-lg text-xs font-bold hover:bg-red-700 transition">Delete</button>
+        </div>
+      </div>
+    ), { id: `delete-${student.uid}`, duration: Infinity });
+  };
 
   useEffect(() => {
     fetchStudents();
@@ -681,6 +1012,54 @@ const StudentMgmtTab = () => {
       .finally(() => setLoading(false));
   };
 
+const handleStudentCSVUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setUploadingStudents(true);
+    const formData = new FormData();
+    formData.append('file', file);
+
+    toast.promise(
+      axios.post('http://localhost:3001/api/warden/students/bulk-upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      }),
+      {
+        loading: 'Syncing CSV to Database...',
+        success: (res) => {
+          fetchStudents(); 
+          return res.data.message;
+        },
+        // ✨ NEW: Dynamically pull the exact error message from the backend!
+        error: (err) => err.response?.data?.error || 'Server error during upload.',
+      }
+    ).finally(() => {
+      setUploadingStudents(false);
+      e.target.value = null; 
+    });
+  };
+
+  // ✨ NEW: Generates a CSV template on the fly
+  const downloadTemplate = () => {
+    const headers = "uid,full_name,dob,phone_no,address,room_no,batch,branch\n";
+    // ✨ Updated dummy data so they know exactly how the date should look
+    const dummyData = "rajagiri-uid,name,dd-mm-yyyy,9876543210,123 Campus Hostel,E-27,2023-27,Computer Science\n";
+    
+    const blob = new Blob([headers + dummyData], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'Student_Upload_Template.csv';
+    document.body.appendChild(a);
+    a.click();
+    
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    toast.success("Template downloaded!");
+  };
+  
   const startEdit = (student) => {
     setEditingId(student.uid);
     setEditForm({ ...student });
@@ -692,56 +1071,153 @@ const StudentMgmtTab = () => {
   };
 
   const saveEdit = async () => {
-    try {
-      await axios.put(`http://localhost:3001/api/warden/students/${editingId}`, editForm);
-      
-      // Update local list without re-fetching
+    toast.promise(
+      axios.put(`http://localhost:3001/api/warden/students/${editingId}`, editForm),
+      {
+        loading: 'Saving changes...',
+        success: 'Student details updated!',
+        error: 'Failed to update details.',
+      }
+    ).then(() => {
       setStudents(students.map(s => s.uid === editingId ? { ...editForm, checkout_count: s.checkout_count } : s));
       setEditingId(null);
-      alert("Student Details Updated");
-    } catch (err) {
-      alert("Failed to update details");
-    }
+    });
   };
 
-const formatDOB = (dob) => {
-  if (!dob) return "N/A";
+// ✨ Converts standard DB date into clean readable text for the table
+  const formatDOB = (dobString) => {
+    if (!dobString) return "N/A";
+    const date = new Date(dobString);
+    if (isNaN(date.getTime())) return "Invalid Date";
+    
+    // Returns e.g., "15/08/2005"
+    return date.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' }); 
+  };
 
-  if (dob.length === 8 && !isNaN(dob)) {
-    return `${dob.slice(0, 2)}/${dob.slice(2, 4)}/${dob.slice(4)}`;
-  }
-  return "check dob format"; 
-};
-  // --- FILTER LOGIC ---
+  // ✨ NEW: Dynamically extract unique batches and branches from the data for the dropdowns
+  const uniqueBatches = [...new Set(students.map(s => s.batch).filter(Boolean))].sort();
+  const uniqueBranches = [...new Set(students.map(s => s.branch).filter(Boolean))].sort();
+
+  // ✨ UPGRADED: Filter Logic now handles Search + Batch + Branch
   const filteredStudents = students.filter(s => {
     const term = searchTerm.toLowerCase();
-    return (
-      s.full_name?.toLowerCase().includes(term) ||
-      s.uid?.toLowerCase().includes(term) ||
-      s.room_no?.toLowerCase().includes(term)
+    
+    // 1. Text Search
+    const matchSearch = (
+      (s.full_name || '').toLowerCase().includes(term) ||
+      (s.uid || '').toLowerCase().includes(term) ||
+      (s.room_no || '').toLowerCase().includes(term) ||
+      (s.batch || '').toLowerCase().includes(term) ||
+      (s.branch || '').toLowerCase().includes(term)
     );
+
+    // 2. Dropdown Filters
+    const matchBatch = filterBatch === 'All' ? true : s.batch === filterBatch;
+    const matchBranch = filterBranch === 'All' ? true : s.branch === filterBranch;
+
+    return matchSearch && matchBatch && matchBranch;
   });
 
   return (
-    <div className="animate-fade-in p-6">
+    <div className="animate-fade-in p-2 sm:p-6">
       
       {/* HEADER */}
-      <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
+      <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center mb-8 gap-4">
+        
+        {/* LEFT: Title & Counter */}
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Student Registry</h1>
-          <p className="text-sm text-gray-500">Manage {students.length} residents</p>
+          <p className="text-sm text-gray-500 mt-1">Manage {students.length} active residents</p>
         </div>
 
-        {/* SEARCH */}
-        <div className="relative w-full md:w-72">
-           <Search size={18} className="absolute left-3 top-3 text-gray-400" />
-           <input 
-             type="text" 
-             placeholder="Search Name, UID, Room..." 
-             value={searchTerm}
-             onChange={(e) => setSearchTerm(e.target.value)}
-             className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-100 transition shadow-sm"
-           />
+        {/* RIGHT: Action Bar (Filters + Search + Upload) */}
+        <div className="flex flex-col sm:flex-row flex-wrap items-center gap-3 w-full xl:w-auto">
+          
+          {/* Branch Filter */}
+          {uniqueBranches.length > 0 && (
+            <div className="relative w-full sm:w-auto">
+              <GraduationCap size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+              <select 
+                value={filterBranch}
+                onChange={(e) => setFilterBranch(e.target.value)}
+                className="w-full sm:w-auto pl-9 pr-8 py-2.5 bg-white border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer text-sm font-medium shadow-sm appearance-none"
+              >
+                <option value="All">All Branches</option>
+                {uniqueBranches.map(b => <option key={b} value={b}>{b}</option>)}
+              </select>
+            </div>
+          )}
+
+          {/* Batch Filter */}
+          {uniqueBatches.length > 0 && (
+            <div className="relative w-full sm:w-auto">
+              <Filter size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+              <select 
+                value={filterBatch}
+                onChange={(e) => setFilterBatch(e.target.value)}
+                className="w-full sm:w-auto pl-9 pr-8 py-2.5 bg-white border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer text-sm font-medium shadow-sm appearance-none"
+              >
+                <option value="All">All Batches</option>
+                {uniqueBatches.map(b => <option key={b} value={b}>{b}</option>)}
+              </select>
+            </div>
+          )}
+
+          {/* SEARCH */}
+          <div className="relative w-full sm:w-64">
+             <Search size={18} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+             <input 
+               type="text" 
+               placeholder="Search by name, room..." 
+               value={searchTerm}
+               onChange={(e) => setSearchTerm(e.target.value)}
+               className="w-full pl-9 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition shadow-sm h-11 text-sm font-medium"
+             />
+          </div>
+
+          {/* UPLOAD & TEMPLATE ACTIONS */}
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+
+            {/* ✨ NEW: Manual Add Button */}
+            <button 
+              onClick={() => setShowAddModal(true)}
+              className="px-4 py-2.5 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition shadow-sm h-11 flex items-center justify-center gap-2 text-sm"
+            >
+              <Plus size={16} /> <span className="hidden sm:inline">Add Student</span>
+            </button>
+            
+            {/* ✨ NEW: Download Template Button */}
+            <button 
+              onClick={downloadTemplate}
+              className="px-4 py-2.5 bg-blue-50 text-blue-600 border border-blue-100 rounded-xl font-bold hover:bg-blue-100 transition shadow-sm h-11 flex items-center justify-center gap-2 text-sm"
+              title="Download formatting template"
+            >
+              <Download size={16} /> <span className="hidden sm:inline">student upload Template</span>
+            </button>
+
+            {/* Existing Upload CSV Button */}
+            <div className="relative overflow-hidden w-full sm:w-auto">
+              <button 
+                className="w-full sm:w-auto bg-green-600 text-white px-5 py-2.5 rounded-xl font-bold hover:bg-green-700 active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed transition shadow-sm h-11 flex items-center justify-center gap-2 text-sm" 
+                disabled={uploadingStudents}
+              >
+                {uploadingStudents ? (
+                  <><span className="animate-spin">⏳</span> Syncing...</>
+                ) : (
+                  <><Upload size={16} /> Upload CSV</>
+                )}
+              </button>
+              <input 
+                type="file" 
+                accept=".csv" 
+                onChange={handleStudentCSVUpload} 
+                disabled={uploadingStudents}
+                title="Upload Student Roster"
+                className="absolute top-0 left-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
+              />
+            </div>
+          </div>
+
         </div>
       </div>
 
@@ -749,7 +1225,7 @@ const formatDOB = (dob) => {
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
-            <thead className="bg-gray-50 text-xs font-bold text-gray-400 uppercase">
+            <thead className="bg-gray-50 text-xs font-bold text-gray-500 uppercase tracking-wider border-b border-gray-200">
               <tr>
                 <th className="px-6 py-4">Student Profile</th>
                 <th className="px-6 py-4">Room & Address</th>
@@ -757,119 +1233,193 @@ const formatDOB = (dob) => {
                 <th className="px-6 py-4 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50 text-sm">
-              {filteredStudents.map((s) => (
-                <tr key={s.uid} className={`transition ${editingId === s.uid ? 'bg-blue-50/50' : 'hover:bg-gray-50'}`}>
-                  
-                  {/* COL 1: IDENTITY */}
-                  <td className="px-6 py-4">
-                    {editingId === s.uid ? (
-                        <div className="space-y-2">
-                            <input 
-                              value={editForm.full_name} 
-                              onChange={(e) => setEditForm({...editForm, full_name: e.target.value})}
-                              className="w-full p-1 border rounded text-sm font-bold"
-                            />
-                            <input 
-                              value={editForm.phone_no} 
-                              onChange={(e) => setEditForm({...editForm, phone_no: e.target.value})}
-                              className="w-full p-1 border rounded text-xs"
-                              placeholder="Phone"
-                            />
-                        </div>
-                    ) : (
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center font-bold text-lg">
-                            {s.full_name ? s.full_name.charAt(0) : '?'}
+            <tbody className="divide-y divide-gray-100 text-sm">
+              {filteredStudents.length === 0 && !loading ? (
+                <tr>
+                  <td colSpan="4" className="px-6 py-12 text-center text-gray-400 bg-gray-50/50">
+                    <div className="flex flex-col items-center gap-2">
+                      <Users size={32} className="text-gray-300" />
+                      <p className="font-medium">No students found matching your filters.</p>
+                      {/* Quick clear filters button */}
+                      {(filterBatch !== 'All' || filterBranch !== 'All' || searchTerm !== '') && (
+                        <button 
+                          onClick={() => {setFilterBatch('All'); setFilterBranch('All'); setSearchTerm('');}}
+                          className="mt-2 text-blue-500 hover:text-blue-700 text-xs font-bold transition"
+                        >
+                          Clear all filters
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                filteredStudents.map((s) => (
+                  <tr key={s.uid} className={`transition-colors ${editingId === s.uid ? 'bg-blue-50/40' : 'hover:bg-blue-50/30'}`}>
+                    
+                    {/* COL 1: IDENTITY & ACADEMICS */}
+                    <td className="px-6 py-4">
+                      {editingId === s.uid ? (
+                          <div className="space-y-2 max-w-[200px]">
+                              <input 
+                                value={editForm.full_name} 
+                                onChange={(e) => setEditForm({...editForm, full_name: e.target.value})}
+                                className="w-full px-3 py-1.5 border border-blue-300 rounded outline-none focus:ring-2 focus:ring-blue-500 text-sm font-bold shadow-sm"
+                                placeholder="Full Name"
+                              />
+                              <input 
+                                value={editForm.phone_no} 
+                                onChange={(e) => setEditForm({...editForm, phone_no: e.target.value})}
+                                className="w-full px-3 py-1.5 border border-blue-300 rounded outline-none focus:ring-2 focus:ring-blue-500 text-sm shadow-sm"
+                                placeholder="Phone Number"
+                              />
+                              {/* ✨ NEW: Inline Edit inputs for Batch & Branch */}
+                              <div className="flex gap-2">
+                                <input 
+                                  value={editForm.branch || ''} 
+                                  onChange={(e) => setEditForm({...editForm, branch: e.target.value})}
+                                  className="w-1/2 px-3 py-1.5 border border-blue-300 rounded outline-none focus:ring-2 focus:ring-blue-500 text-xs shadow-sm uppercase placeholder-normal"
+                                  placeholder="Branch (e.g. CSE)"
+                                />
+                                <input 
+                                  value={editForm.batch || ''} 
+                                  onChange={(e) => setEditForm({...editForm, batch: e.target.value})}
+                                  className="w-1/2 px-3 py-1.5 border border-blue-300 rounded outline-none focus:ring-2 focus:ring-blue-500 text-xs shadow-sm"
+                                  placeholder="Batch (2023-27)"
+                                />
+                              </div>
                           </div>
-                          <div>
-                            <p className="font-bold text-gray-800">{s.full_name}</p>
-                            <p className="text-xs text-gray-400 font-mono">{s.uid}</p>
-                            <div className="flex items-center gap-1 mt-1 text-xs text-gray-500">
-                               <Phone size={10} /> {s.phone_no || "No Phone"}
+                      ) : (
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 text-blue-600 flex items-center justify-center font-black text-lg shrink-0">
+                              {s.full_name ? s.full_name.charAt(0).toUpperCase() : '?'}
+                            </div>
+                            <div>
+                              <p className="font-bold text-gray-800">{s.full_name}</p>
+                              <p className="text-sm text-gray-500 font-medium">{s.uid}</p>
+                              
+                              {/* ✨ NEW: Academic Pills */}
+                              <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                                {s.branch && (
+                                  <span className="px-2 py-0.5 bg-purple-50 text-purple-700 rounded text-[10px] font-black uppercase tracking-wider border border-purple-100">
+                                    {s.branch}
+                                  </span>
+                                )}
+                                {s.batch && (
+                                  <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-[10px] font-bold border border-gray-200">
+                                    {s.batch}
+                                  </span>
+                                )}
+                                {!s.branch && !s.batch && (
+                                  <div className="flex items-center gap-1 text-[10px] font-semibold text-gray-400">
+                                    <Phone size={10} /> {s.phone_no || "No Data"}
+                                  </div>
+                                )}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                    )}
-                  </td>
+                      )}
+                    </td>
 
-                  {/* COL 2: RESIDENCY */}
-                  <td className="px-6 py-4 max-w-xs">
-                    {editingId === s.uid ? (
-                        <div className="space-y-2">
-                             <input 
-                              value={editForm.room_no || ''} 
-                              onChange={(e) => setEditForm({...editForm, room_no: e.target.value})}
-                              className="w-24 p-1 border rounded text-sm font-bold"
-                              placeholder="Room"
-                            />
-                            <textarea 
-                              value={editForm.address || ''} 
-                              onChange={(e) => setEditForm({...editForm, address: e.target.value})}
-                              className="w-full p-1 border rounded text-xs"
-                              rows={2}
-                              placeholder="Address"
-                            />
-                        </div>
-                    ) : (
-                        <div>
-                           <div className="flex items-center gap-2 mb-1">
-                              <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs font-bold">
-                                {s.room_no || "Unassigned"}
-                              </span>
-                           </div>
-                           <p className="text-xs text-gray-500 truncate max-w-[200px]" title={s.address}>
-                             {s.address || "No Address Provided"}
-                           </p>
-                           {/* Using Password Hash as DOB holder*/}
-                           <p className="text-[10px] text-gray-400 mt-1 flex items-center gap-1">
-                             <Calendar size={10}/> DOB: {formatDOB(s.dob)}
-                           </p>
-                        </div>
-                    )}
-                  </td>
+                    {/* COL 2: RESIDENCY */}
+                    <td className="px-6 py-4 max-w-xs">
+                      {editingId === s.uid ? (
+                          <div className="space-y-2">
+                              <input 
+                                value={editForm.room_no || ''} 
+                                onChange={(e) => setEditForm({...editForm, room_no: e.target.value})}
+                                className="w-full px-3 py-1.5 border border-blue-300 rounded outline-none focus:ring-2 focus:ring-blue-500 text-sm font-bold shadow-sm"
+                                placeholder="Room Number"
+                              />
+                              <textarea 
+                                value={editForm.address || ''} 
+                                onChange={(e) => setEditForm({...editForm, address: e.target.value})}
+                                className="w-full px-3 py-1.5 border border-blue-300 rounded outline-none focus:ring-2 focus:ring-blue-500 text-sm shadow-sm resize-none"
+                                rows={2}
+                                placeholder="Home Address"
+                              />
+                              {/* ✨ NEW: The missing DOB Calendar Input! */}
+                              <div className="flex items-center gap-2">
+                                <Calendar size={14} className="text-gray-400 shrink-0" />
+                                <input 
+                                  type="date" 
+                                  value={editForm.dob ? editForm.dob.split('T')[0] : ''} 
+                                  onChange={(e) => setEditForm({...editForm, dob: e.target.value})}
+                                  className="w-full px-3 py-1.5 border border-blue-300 rounded outline-none focus:ring-2 focus:ring-blue-500 text-xs shadow-sm font-bold text-gray-700"
+                                  title="Date of Birth"
+                                />
+                              </div>
+                          </div>
+                      ) : (
+                          <div className="flex flex-col items-start gap-1">
+                             <span className="bg-gray-100 border border-gray-200 text-gray-700 px-2.5 py-1 rounded-md text-xs font-bold whitespace-nowrap">
+                               🚪 {s.room_no || "Unassigned"}
+                             </span>
+                             <p className="text-sm text-gray-500 truncate w-full mt-1" title={s.address}>
+                               {s.address || "No Address Provided"}
+                             </p>
+                             <p className="text-xs text-gray-400 mt-0.5 flex items-center gap-1.5 font-medium">
+                               <Calendar size={12}/> DOB: {formatDOB(s.dob)}
+                             </p>
+                          </div>
+                      )}
+                    </td>
 
-                  {/* COL 3: STATS */}
-                  <td className="px-6 py-4">
-                     <div className="flex flex-col gap-1">
-                        <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Gate Activity</span>
-                        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-bold w-fit ${s.checkout_count > 10 ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-600'}`}>
-                           <Shield size={12} /> {s.checkout_count || 0} Exits
-                        </span>
-                     </div>
-                  </td>
+                    {/* COL 3: STATS */}
+                    <td className="px-6 py-4">
+                       <div className="flex flex-col gap-1.5">
+                          <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Gate Activity</span>
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold w-fit border ${
+                            s.checkout_count >= 10 
+                              ? 'bg-orange-50 text-orange-700 border-orange-200' 
+                              : 'bg-green-50 text-green-700 border-green-200'
+                          }`}>
+                             <Shield size={14} /> 
+                             {s.checkout_count || 0} {s.checkout_count === 1 ? 'Exit' : 'Exits'}
+                          </span>
+                       </div>
+                    </td>
 
-                  {/* COL 4: ACTIONS */}
-                  <td className="px-6 py-4 text-right">
-                    {editingId === s.uid ? (
-                        <div className="flex justify-end gap-2">
-                            <button onClick={saveEdit} className="p-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200" title="Save">
-                                <Save size={16} />
-                            </button>
-                            <button onClick={cancelEdit} className="p-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200" title="Cancel">
-                                <X size={16} />
-                            </button>
-                        </div>
-                    ) : (
-                        <button onClick={() => startEdit(s)} className="p-2 text-gray-400 hover:bg-blue-50 hover:text-blue-600 rounded-lg transition">
-                           <Edit2 size={16} />
-                        </button>
-                    )}
-                  </td>
+                    {/* COL 4: ACTIONS */}
+                    <td className="px-6 py-4 text-right">
+                      {editingId === s.uid ? (
+                          <div className="flex justify-end gap-2">
+                              <button 
+                                onClick={cancelEdit} 
+                                className="flex items-center gap-1 px-3 py-1.5 bg-white border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 font-bold text-xs shadow-sm transition-colors" 
+                                title="Cancel"
+                              >
+                                  <X size={14} /> Cancel
+                              </button>
+                              <button 
+                                onClick={saveEdit} 
+                                className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold text-xs shadow-sm transition-colors" 
+                                title="Save Changes"
+                              >
+                                  <Save size={14} /> Save
+                              </button>
+                          </div>
+                      ) : (
+                          <button 
+                            onClick={() => startEdit(s)} 
+                            className="p-2 text-gray-400 hover:bg-blue-50 hover:text-blue-600 rounded-lg transition-colors border border-transparent hover:border-blue-100"
+                            title="Edit Student"
+                          >
+                             <Edit2 size={16} />
+                          </button>
+                      )}
+                    </td>
 
-                </tr>
-              ))}
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
-          
-          {filteredStudents.length === 0 && (
-            <div className="text-center py-12 text-gray-400">No students found matching "{searchTerm}"</div>
-          )}
         </div>
       </div>
     </div>
   );
 };
+
 
 const DashboardHome = ({setActiveTab}) => {
   const [stats, setStats] = useState({
@@ -1031,6 +1581,8 @@ const MenuTab = () =>{
     Lunch: { start: '00:00', end: '00:00' },
     Dinner: { start: '00:00', end: '00:00' }
   });
+  const [uploading, setUploading] = useState(false);
+
   
   // Add a new state for the Time Editor Modal
   const [timeEditModal, setTimeEditModal] = useState(null); // Will hold { meal: 'Breakfast', start: '07:30', end: '09:30' }
@@ -1041,6 +1593,7 @@ const MenuTab = () =>{
   const [showAIModal, setShowAIModal] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiPrompt, setAiPrompt] = useState('');
+  const abortControllerRef = useRef(null);
 
   // --- FORM STATES ---
   const [newDish, setNewDish] = useState({ dish_name: '', diet_type: 'Veg', cost: '', effort_score: '' });
@@ -1076,57 +1629,83 @@ const MenuTab = () =>{
     }
   };
 
-  const handleAssignDish = async (e) => {
+  const handleAssignDish = (e) => {
     e.preventDefault();
     if (!selectedDishId) return alert("Please select a dish!");
     
-    try {
-      await axios.post('http://localhost:3001/api/admin/daily-menu', {
-        serve_date: assignModalData.dateString,
-        meal_type: assignModalData.mealType,
-        dish_id: selectedDishId
-      });
-      setAssignModalData(null); // Close the modal
-      setSelectedDishId(''); // Reset selection
-      fetchWeeklyMenu(); // Instantly refresh the grid to show the new assignment
-    } catch (err) {
-      console.error("Error scheduling dish:", err);
-      alert("Failed to schedule dish.");
-    }
+    // Find the full dish details from the catalog so the UI renders it instantly
+    const dishObj = catalog.find(d => d.id === parseInt(selectedDishId));
+    
+    const newEntry = {
+      schedule_id: `temp_${Date.now()}_${Math.random()}`, // Fake local ID so React can track it
+      serve_date: assignModalData.dateString,
+      meal_type: assignModalData.mealType,
+      dish_id: dishObj.id,
+      status: 'Draft', // 👈 Shows as a draft in the UI!
+      dish_name: dishObj.dish_name,
+      diet_type: dishObj.diet_type,
+      cost: dishObj.cost,
+      effort_score: dishObj.effort_score
+    };
+
+    // Update the UI state instantly, NO DATABASE CALL
+    setWeeklyMenu(prev => [...prev, newEntry]);
+    setAssignModalData(null); 
+    setSelectedDishId(''); 
   };
 
-  const handleRemoveDish = async (scheduleId, dishName) => {
-    // A quick confirmation so they don't accidentally click it
-    if (!window.confirm(`Are you sure you want to remove ${dishName} from this slot?`)) return;
-
-    try {
-      await axios.delete(`http://localhost:3001/api/admin/daily-menu/${scheduleId}`);
-      fetchWeeklyMenu(); // Instantly refresh the grid to show it's gone
-    } catch (err) {
-      console.error("Error removing dish:", err);
-      alert("Failed to remove dish.");
-    }
+  const handleRemoveDish = (scheduleId, dishName) => {
+    // Just filter it out of the local React state, NO DATABASE CALL
+    setWeeklyMenu(prev => prev.filter(dish => dish.schedule_id !== scheduleId));
   };
 
   const handleApproveWeek = async () => {
-    // We already have the dates calculated in your weekDays array!
     const startStr = weekDays[0].dateString;
     const endStr = weekDays[6].dateString;
 
-    if (!window.confirm("Are you sure you want to approve this week's menu? This will make it visible to students.")) return;
+    if (!window.confirm("Are you sure you want to approve this draft? This will replace the current schedule in the database.")) return;
 
     try {
-      await axios.put('http://localhost:3001/api/admin/daily-menu/approve', {
+      // Send the ENTIRE local draft array to the backend in one go
+      await axios.put('http://localhost:3001/api/admin/weekly-menu/sync', {
         start_date: startStr,
-        end_date: endStr
+        end_date: endStr,
+        menu_items: weeklyMenu
       });
-      alert("Week's menu approved successfully!");
-      fetchWeeklyMenu(); // Refresh the grid
+      alert("Week's menu saved and approved successfully!");
+      fetchWeeklyMenu(); // Re-fetch to get the real Database IDs and remove the 'Draft' badges
     } catch (err) {
       console.error("Error approving menu:", err);
       alert("Failed to approve menu.");
     }
   };
+
+  const handleFileUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setUploading(true);
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const res = await axios.post('http://localhost:3001/api/admin/menu-catalog/bulk-upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      
+      alert(res.data.message); // Will say "Added X new dishes. Skipped Y duplicates."
+      fetchCatalog();
+      // OPTIONAL: Call your fetchCatalog() function here to refresh the UI automatically!
+      
+    } catch (err) {
+      console.error(err);
+      alert("Failed to upload CSV.");
+    } finally {
+      setUploading(false);
+      e.target.value = null; // Reset the input so they can upload again if needed
+    }
+  };
+  
   // Track the start of the currently viewed week (Defaults to this week's Monday)
   const [weekStart, setWeekStart] = useState(() => {
     const d = new Date();
@@ -1207,24 +1786,71 @@ const MenuTab = () =>{
     }
   };
 
-  const ask_ai=async () => {
+  const ask_ai = async () => {
     setAiLoading(true);
+    abortControllerRef.current = new AbortController();
+
     try {
-          const res = await axios.post('http://localhost:3001/api/admin/ai-generate-menu', {
-          start_date: weekDays[0].dateString,
-          end_date: weekDays[6].dateString, 
-          custom_prompt: aiPrompt
-          });       
-          console.log("AI Generated Menu:", res.data.proposed_menu);   
-          // Here you would map the res.data.proposed_menu into your UI grid!
-          alert("Menu generated! Check the console to see the JSON data.");   
-          setShowAIModal(false);
-        } catch (err) {
-            alert(err.response?.data?.error || "AI Generation Failed");
-            } finally {
-                setAiLoading(false);
-              }
+      const res = await axios.post('http://localhost:3001/api/admin/ga-generate-menu', {
+        start_date: weekDays[0].dateString,
+        end_date: weekDays[6].dateString, 
+        custom_prompt: aiPrompt
+      }, {
+        signal: abortControllerRef.current.signal 
+      });       
+      
+      const populatedMenu = res.data.proposed_menu.map((item, index) => {
+        
+        // 🌟 SCENARIO A: The AI invented a brand new dish!
+        if (item.is_new_creation) {
+           return {
+              schedule_id: `temp_new_ai_${Date.now()}_${index}`,
+              serve_date: item.serve_date,
+              meal_type: item.meal_type,
+              dish_id: null, // No DB ID yet!
+              is_new_creation: true, // Tells the backend to insert this on save
+              status: 'AI Draft', 
+              is_new_recipe_badge: true, // Custom UI flag for our special badge
+              dish_name: item.dish_name,
+              diet_type: item.diet_type,
+              cost: item.cost || 0,
+              effort_score: item.effort_score || 5
+           };
+        }
+
+        // 🍔 SCENARIO B: It's an existing dish from the catalog
+        const dishObj = catalog.find(d => d.id === parseInt(item.dish_id));
+        if (!dishObj) return null;
+        
+        return {
+            schedule_id: `temp_ai_${Date.now()}_${index}`,
+            serve_date: item.serve_date,
+            meal_type: item.meal_type,
+            dish_id: dishObj.id,
+            is_new_creation: false,
+            status: 'AI Draft',
+            dish_name: dishObj.dish_name,
+            diet_type: dishObj.diet_type,
+            cost: dishObj.cost,
+            effort_score: dishObj.effort_score
+        };
+      }).filter(Boolean);
+
+      // Overwrite the current week with the AI's draft
+      setWeeklyMenu(populatedMenu);
+      setShowAIModal(false);
+      alert("AI draft generated! Review the new recipes and click Approve to lock them into the catalog.");   
+      
+    } catch (err) {
+      if (axios.isCancel(err)) {
+        console.log("AI Generation was aborted by the user.");
+      } else {
+        alert(err.response?.data?.error || "AI Generation Failed");
       }
+    } finally {
+      setAiLoading(false);
+    }
+  }
 
   // Helper to make 24hr time look nice in the table header (e.g., 14:30 -> 2:30 PM)
   const format12Hour = (time24) => {
@@ -1235,6 +1861,46 @@ const MenuTab = () =>{
     const displayHours = hours % 12 || 12;
     return `${displayHours}:${m} ${suffix}`;
   };
+
+  // 🧮 Automatically calculate totals whenever the weekly menu changes
+  const weeklyMetrics = useMemo(() => {
+    // Change 'weeklyMenu' to whatever state variable holds your fetched schedule!
+    if (!weeklyMenu || weeklyMenu.length === 0) {
+      return { totalCost: 0, avgCost: 0, avgEffort: 0, highestEffortDay: "N/A" };
+    }
+
+    let totalC = 0;
+    let totalE = 0;
+    let count = weeklyMenu.length;
+    let dailyEffortTracker = {};
+
+    weeklyMenu.forEach(meal => {
+      totalC += Number(meal.cost) || 0;
+      totalE += Number(meal.effort_score) || 0;
+      
+      // Track effort per day to find the hardest day for the kitchen
+      const day = meal.serve_date.split('T')[0];
+      if (!dailyEffortTracker[day]) dailyEffortTracker[day] = 0;
+      dailyEffortTracker[day] += Number(meal.effort_score) || 0;
+    });
+
+    // Find the day with the maximum kitchen effort
+    let maxEffort = 0;
+    let hardestDay = "N/A";
+    Object.entries(dailyEffortTracker).forEach(([day, effort]) => {
+        if (effort > maxEffort) {
+            maxEffort = effort;
+            hardestDay = new Date(day).toLocaleDateString('en-US', { weekday: 'long' });
+        }
+    });
+
+    return {
+      totalCost: totalC.toFixed(2),
+      avgCost: (totalC / count).toFixed(2),
+      avgEffort: (totalE / count).toFixed(1),
+      highestEffortDay: hardestDay
+    };
+  }, [weeklyMenu]);
 
   const filteredCatalog = catalog.filter(dish => 
     dish.dish_name.toLowerCase().includes(catalogSearch.toLowerCase())
@@ -1330,10 +1996,15 @@ const MenuTab = () =>{
                                 
                                 <div className="flex items-center gap-2 mt-1">
                                   <span className="text-xs opacity-75">{dish.diet_type}</span>
-                                  
-                                  {/* THE NEW STATUS BADGE */}
-                                  <span className={`text-[10px] px-1.5 py-0.5 rounded uppercase tracking-wider font-bold ${dish.status === 'Approved' ? 'bg-blue-100 text-blue-700' : 'bg-yellow-200 text-yellow-800'}`}>
-                                    {dish.status || 'Pending'}
+                                  {/* THE DYNAMIC STATUS BADGE */}
+                                  <span className={`text-[10px] px-1.5 py-0.5 rounded uppercase tracking-wider font-bold ${
+                                    dish.is_new_recipe_badge ? 'bg-fuchsia-100 text-fuchsia-700 border border-fuchsia-200' :
+                                    dish.status === 'AI Draft' ? 'bg-purple-100 text-purple-700 border border-purple-200' :
+                                    dish.status === 'Draft' ? 'bg-orange-100 text-orange-700 border border-orange-200' : 
+                                    dish.status === 'Approved' ? 'bg-blue-100 text-blue-700' : 
+                                    'bg-yellow-200 text-yellow-800'
+                                  }`}>
+                                    {dish.is_new_recipe_badge ? '✨ NEW RECIPE' : dish.status === 'AI Draft' ? '🤖 AI Draft' : dish.status}
                                   </span>
                                 </div>
                                 
@@ -1448,6 +2119,17 @@ const MenuTab = () =>{
                   </div>
                   
                 </form>
+                <div className="relative overflow-hidden inline-block mt-2">
+                    <button className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-blue-700 disabled:opacity-50" disabled={uploading}>
+                      {uploading ? 'Processing...' : 'Upload CSV'}
+                    </button>
+                      <input 
+                        type="file" 
+                        accept=".csv" 
+                        onChange={handleFileUpload} 
+                      className="absolute top-0 left-0 w-full h-full opacity-0 cursor-pointer"
+                    />
+                </div>
               </div>
 
               {/* SECTION 2: CURRENT CATALOG LIST */}
@@ -1541,7 +2223,13 @@ const MenuTab = () =>{
               {/* Action Buttons */}
               <div className="flex gap-3 pt-2">
                 <button 
-                  onClick={() => setShowAIModal(false)}
+                  onClick={() => {
+                    if (abortControllerRef.current) {
+                      abortControllerRef.current.abort(); // 🛑 Kill the network request!
+                    }
+                    setShowAIModal(false); // Hide the UI
+                    setAiLoading(false);   // Reset the loading spinner
+                  }}
                   className="flex-1 bg-white border-2 border-gray-200 text-gray-600 font-bold py-3 rounded-xl hover:bg-gray-50 transition"
                 >
                   Cancel
@@ -1640,6 +2328,55 @@ const MenuTab = () =>{
           </div>
         </div>
       )}
+
+      {/* --- WEEKLY OPERATIONS SUMMARY --- */}
+      <div className="mt-8 bg-white p-6 rounded-2xl border border-gray-200 shadow-sm flex flex-col md:flex-row items-center justify-between gap-6 animate-fade-in">
+        
+        <div>
+          <h3 className="font-bold text-gray-800 text-lg">Weekly Operations Brief</h3>
+          <p className="text-xs text-gray-500 mt-1">Estimated metrics per student for the selected week.</p>
+        </div>
+
+        <div className="flex flex-wrap gap-4">
+          {/* Budget Metric */}
+          <div className="bg-green-50 px-4 py-3 rounded-xl border border-green-100 flex items-center gap-4 min-w-[160px]">
+             <div className="bg-green-200 text-green-700 p-2 rounded-lg font-black text-xl">₹</div>
+             <div>
+               <p className="text-[10px] uppercase font-bold text-green-600 tracking-wider">Total Cost</p>
+               <p className="font-black text-green-900 text-lg">₹{weeklyMetrics.totalCost}</p>
+             </div>
+          </div>
+          
+          {/* Avg. Budget Metric */}
+          <div className="bg-blue-50 px-4 py-3 rounded-xl border border-blue-100 flex items-center gap-3 flex-1 min-w-[140px]">
+             <div className="bg-blue-200 text-blue-700 p-2 rounded-lg font-black text-lg">⚖</div>
+             <div>
+               <p className="text-[10px] uppercase font-bold text-blue-600 tracking-wider">Avg Cost/Meal</p>
+               <p className="font-black text-blue-900 text-lg">₹{weeklyMetrics.avgCost}</p>
+             </div>
+          </div>
+
+          {/* Effort Metric */}
+          <div className="bg-orange-50 px-4 py-3 rounded-xl border border-orange-100 flex items-center gap-4 min-w-[160px]">
+             <div className="bg-orange-200 text-orange-700 p-2 rounded-lg font-black text-xl">♨</div>
+             <div>
+               <p className="text-[10px] uppercase font-bold text-orange-600 tracking-wider">Avg Labor Effort</p>
+               <p className="font-black text-orange-900 text-lg">{weeklyMetrics.avgEffort} / 10</p>
+             </div>
+          </div>
+
+          {/* Warning Metric */}
+          <div className="bg-red-50 px-4 py-3 rounded-xl border border-red-100 flex items-center gap-4 min-w-[160px]">
+             <div className="bg-red-200 text-red-700 p-2 rounded-lg font-black text-xl">⚠</div>
+             <div>
+               <p className="text-[10px] uppercase font-bold text-red-600 tracking-wider">Hardest Shift</p>
+               <p className="font-black text-red-900 text-lg">{weeklyMetrics.highestEffortDay}</p>
+             </div>
+          </div>
+        </div>
+        
+      </div>
+
       <div className="p-4 border-t bg-gray-50 flex justify-between items-center">
           <p className="text-sm text-gray-500">
             Click approve to publish this week's menu to the Student App.
@@ -1660,6 +2397,9 @@ const MessReviewsTab = () => {
   const [allReviews, setAllReviews] = useState([]);
   const [catalog, setCatalog] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [isSyncingMath, setIsSyncingMath] = useState(false);
+
+  
 
   // AI State
   const [aiSummary, setAiSummary] = useState('');
@@ -1675,7 +2415,7 @@ const MessReviewsTab = () => {
     fetchDashboardData();
   }, []);
 
-  const fetchDashboardData = async () => {
+const fetchDashboardData = async () => {
     try {
       // Fetch both Reviews and the Menu Catalog for the Bayesian Scores!
       const [revRes, catRes] = await Promise.all([
@@ -1773,6 +2513,22 @@ const MessReviewsTab = () => {
       setGeneratingAI(false);
     }
   };
+  const handleForceMathSync = async () => {
+    setIsSyncingMath(true);
+    try {
+      const res = await axios.get('http://localhost:3001/api/admin/force-popularity-sync');
+      alert(res.data.message); // This will show your "Math Complete!" success message
+      
+      // If you have a function to fetch the leaderboard/reviews, call it here to refresh the UI!
+      // fetchLeaderboard(); 
+      
+    } catch (err) {
+      console.error("Math Engine Error:", err);
+      alert("Failed to run the math engine.");
+    } finally {
+      setIsSyncingMath(false);
+    }
+  };
 
   const formatDate = (dateString) => {
     if (!dateString) return 'Unknown Date';
@@ -1854,10 +2610,31 @@ const MessReviewsTab = () => {
           
           {/* COL 1: The Bayesian Leaderboard */}
           <div className="bg-white rounded-2xl shadow-sm p-6 border border-gray-100 flex flex-col gap-4">
-            <h3 className="font-bold text-gray-800 flex items-center gap-2 text-sm uppercase tracking-wider">
-              <Star size={18} className="text-yellow-500"/> Bayesian Rankings
-            </h3>
             
+            {/* HEADING AND SYNC BUTTON IN ONE ROW */}
+            <div className="flex justify-between items-center">
+              <h3 className="font-bold text-gray-800 flex items-center gap-2 text-sm uppercase tracking-wider">
+                <Star size={18} className="text-yellow-500"/> Bayesian Rankings
+              </h3>
+              
+              {/* 🧮 MINI FORCE BAYESIAN SYNC BUTTON */}
+              <button 
+                onClick={handleForceMathSync} 
+                disabled={isSyncingMath}
+                className="bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 hover:border-indigo-300 px-2 py-1 rounded text-xs font-bold transition-all active:scale-95 flex items-center gap-1.5 disabled:opacity-70 shadow-sm"
+              >
+                {isSyncingMath ? (
+                  <>
+                    <span className="animate-spin text-[10px]">⚙️</span> Syncing...
+                  </>
+                ) : (
+                  <>
+                    <span className="text-[10px]">🧮</span> Sync
+                  </>
+                )}
+              </button>
+            </div>
+
             <div className="space-y-2">
               <p className="text-xs font-bold text-gray-400 mb-1">🔥 ALL-TIME BEST</p>
               {topBayesian.map((dish, i) => (
@@ -1877,6 +2654,7 @@ const MessReviewsTab = () => {
                 </div>
               ))}
             </div>
+            
           </div>
 
           {/* COL 2: Top Complained (Filtered Context) */}
@@ -2010,7 +2788,7 @@ function WardenDashboard() {
     { id: 'home', label: 'Home', icon: <Home size={20} /> },
     { id: 'mess', label: 'Mess Reviews', icon: <ClipboardList size={20} /> },
     { id: 'menu', label: 'Menu Management', icon: <Utensils size={20} /> },
-    { id: 'overnight', label: 'Overnight Stay', icon: <Moon size={20} /> },
+    { id: 'overnight', label: 'Overnight Logs', icon: <Moon size={20} /> },
     { id: 'grievances', label: 'Grievances', icon: <AlertCircle size={20} /> },
     { id: 'students', label: 'Student Management', icon: <Users size={20} /> },
   ];

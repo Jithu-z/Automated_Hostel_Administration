@@ -6,6 +6,7 @@ import GatePass from './GatePass';
 import StudentComplaint from './StudentComplaint';
 import WardenDashboard from './WardenDashboard';
 import MessReview from './MessReview';
+import { Toaster } from 'react-hot-toast'; 
 
 function App() {
   const [user, setUser] = useState(() => {
@@ -14,6 +15,23 @@ function App() {
   });
 
   return (
+    <>
+    {/* ✨ THE GLOBAL TOASTER (Catches all toast() calls from any page) */}
+      <Toaster 
+        position="top-center"
+        toastOptions={{
+          className: 'text-sm font-bold shadow-lg rounded-xl border border-gray-100',
+          duration: 4000,
+          success: {
+            style: { background: '#f0fdf4', color: '#166534' },
+            iconTheme: { primary: '#16a34a', secondary: '#fff' }
+          },
+          error: {
+            style: { background: '#fef2f2', color: '#991b1b' },
+            iconTheme: { primary: '#dc2626', secondary: '#fff' }
+          },
+        }}
+      />
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Login setUser={setUser} />} />
@@ -26,6 +44,7 @@ function App() {
         </Route>
       </Routes>
     </BrowserRouter>
+  </>
   );
 }
 

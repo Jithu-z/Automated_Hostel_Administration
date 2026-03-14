@@ -1,0 +1,149 @@
+
+const DashboardHome = ({setActiveTab}) => {
+  const [stats, setStats] = useState({
+    total_students: 0,
+    students_out: 0,
+    pending_grievances: 0,
+    mess_rating: "0.0" 
+  });
+  
+  const today = new Date().toLocaleDateString('en-US', { 
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' 
+  });
+
+  useEffect(() => {
+    axios.get('http://localhost:3001/api/warden/home-stats')
+      .then(res => setStats(prev => ({...prev, ...res.data}))) 
+      .catch(err => console.error("Stats fetch error:", err));
+  }, []);
+
+  return (
+    <div className="animate-fade-in space-y-8 pb-10">
+      
+      {/* 1. HEADER */}
+      <div className="flex flex-col md:flex-row justify-between md:items-end gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-800">Warden Dashboard</h1>
+          <p className="text-gray-500 mt-1">System Overview & Alerts</p>
+        </div>
+        <div className="bg-white px-4 py-2 rounded-xl border border-gray-200 text-sm font-bold text-gray-600 shadow-sm flex items-center gap-2">
+           <Calendar size={16} className="text-blue-500"/> {today}
+        </div>
+      </div>
+
+      {/* 2. CRITICAL ALERTS ROW */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        
+        {/* Card A: Security */}
+        <div 
+          onClick={() => setActiveTab('overnight')}
+          className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition cursor-pointer group relative overflow-hidden"
+        >
+          <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition"><LogOut size={80} /></div>
+          <div className="flex justify-between items-start mb-4">
+            <div className={`p-3 rounded-xl ${stats.students_out > 0 ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>
+              <LogOut size={24} />
+            </div>
+            {stats.students_out > 0 && <span className="animate-pulse w-2 h-2 bg-red-500 rounded-full"></span>}
+          </div>
+          <h3 className="text-4xl font-black text-gray-800 mb-1">{stats.students_out}</h3>
+          <p className="text-sm font-bold text-gray-400 group-hover:text-red-600 transition flex items-center gap-1">
+             Students Out <ChevronRight size={14}/>
+          </p>
+        </div>
+
+        {/* Card B: Maintenance */}
+        <div 
+          onClick={() => setActiveTab('grievances')}
+          className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition cursor-pointer group relative overflow-hidden"
+        >
+          <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition"><AlertCircle size={80} /></div>
+          <div className="flex justify-between items-start mb-4">
+            <div className={`p-3 rounded-xl ${stats.pending_grievances > 0 ? 'bg-orange-100 text-orange-600' : 'bg-gray-100 text-gray-600'}`}>
+              <AlertCircle size={24} />
+            </div>
+            {stats.pending_grievances > 0 && <span className="animate-pulse w-2 h-2 bg-orange-500 rounded-full"></span>}
+          </div>
+          <h3 className="text-4xl font-black text-gray-800 mb-1">{stats.pending_grievances}</h3>
+          <p className="text-sm font-bold text-gray-400 group-hover:text-orange-600 transition flex items-center gap-1">
+             Pending Complaints <ChevronRight size={14}/>
+          </p>
+        </div>
+
+        {/* Card C: Mess Intelligence */}
+        <div 
+          onClick={() => setActiveTab('mess')}
+          className="bg-gradient-to-br from-blue-600 to-indigo-800 p-6 rounded-2xl shadow-lg text-white relative overflow-hidden cursor-pointer group hover:shadow-xl transition flex flex-col justify-between"
+        >
+          <div className="relative z-10 flex justify-between items-start">
+             <div className="bg-white/20 p-3 rounded-xl backdrop-blur-sm">
+               <Star size={24} className="text-yellow-300 fill-yellow-300" />
+             </div>
+             <span className="bg-blue-500/50 px-2 py-1 rounded text-xs font-bold backdrop-blur-sm flex items-center gap-1">
+               LIVE <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse"></span>
+             </span>
+          </div>
+          
+          <div className="relative z-10 mt-4">
+             <div className="flex items-end gap-2 mb-1">
+               <h3 className="text-4xl font-black">{stats.mess_rating}</h3>
+               <span className="text-blue-200 mb-1 font-bold text-lg">/ 5.0</span>
+             </div>
+             <p className="text-sm font-bold text-blue-100 group-hover:text-white transition flex items-center gap-1">
+                Today's Mess Average <ChevronRight size={14}/>
+             </p>
+          </div>
+
+          {/* Decorative Graph Line */}
+          <div className="absolute bottom-0 left-0 w-full h-24 opacity-20">
+             <svg viewBox="0 0 100 20" className="fill-current text-white w-full h-full preserve-3d">
+                <path d="M0 20 L0 10 Q20 5 40 12 T80 8 T100 15 L100 20 Z" />
+             </svg>
+          </div>
+        </div>
+
+      </div>
+
+      {/* 3. FUNCTIONALITY GRID */}
+      <div>
+        <h3 className="font-bold text-gray-800 mb-4 text-lg">System Modules</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            
+            <button onClick={() => setActiveTab('students')} className="p-5 bg-white border border-gray-200 rounded-2xl hover:border-blue-400 hover:shadow-lg transition text-left group flex flex-col justify-between h-32">
+               <div className="bg-blue-50 w-fit p-3 rounded-xl text-blue-600 group-hover:scale-110 transition mb-3"><Users size={22}/></div>
+               <div>
+                  <h3 className="font-bold text-gray-700">Resident Directory</h3>
+                  <p className="text-xs text-gray-400 mt-0.5">Manage {stats.total_students} students</p>
+               </div>
+            </button>
+
+            <button onClick={() => setActiveTab('menu')} className="p-5 bg-white border border-gray-200 rounded-2xl hover:border-purple-400 hover:shadow-lg transition text-left group flex flex-col justify-between h-32">
+               <div className="bg-purple-50 w-fit p-3 rounded-xl text-purple-600 group-hover:scale-110 transition mb-3"><ClipboardList size={22}/></div>
+               <div>
+                  <h3 className="font-bold text-gray-700">Weekly Menu</h3>
+                  <p className="text-xs text-gray-400 mt-0.5">Update food schedule</p>
+               </div>
+            </button>
+
+            <button onClick={() => setActiveTab('overnight')} className="p-5 bg-white border border-gray-200 rounded-2xl hover:border-red-400 hover:shadow-lg transition text-left group flex flex-col justify-between h-32">
+               <div className="bg-red-50 w-fit p-3 rounded-xl text-red-600 group-hover:scale-110 transition mb-3"><Moon size={22}/></div>
+               <div>
+                  <h3 className="font-bold text-gray-700">Overnight Log</h3>
+                  <p className="text-xs text-gray-400 mt-0.5">Track late entries</p>
+               </div>
+            </button>
+
+            <button onClick={() => setActiveTab('mess')} className="p-5 bg-white border border-gray-200 rounded-2xl hover:border-green-400 hover:shadow-lg transition text-left group flex flex-col justify-between h-32">
+               <div className="bg-green-50 w-fit p-3 rounded-xl text-green-600 group-hover:scale-110 transition mb-3"><CheckCircle size={22}/></div>
+               <div>
+                  <h3 className="font-bold text-gray-700">Feedback Hub</h3>
+                  <p className="text-xs text-gray-400 mt-0.5">Analyze student ratings</p>
+               </div>
+            </button>
+
+        </div>
+      </div>
+
+    </div>
+  );
+};
