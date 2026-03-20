@@ -1,0 +1,97 @@
+SERVER
+
+app.put('/api/admin/weekly-menu/sync', async (req, res) => {
+    const { start_date, end_date, menu_items } = req.body;
+    
+    try {
+        // 1. Clear out the existing schedule for this exact date range
+        await db.promise().query("DELETE FROM daily_menu WHERE serve_date BETWEEN ? AND ?", [start_date, end_date]);
+
+        // 2. If the Warden deleted everything and saved an empty week, just return success
+        if (!menu_items || menu_items.length === 0) {
+            return res.json({ success: true, message: "Menu cleared and saved." });
+        }
+
+        // 3. Build a bulk insert array
+        const values = menu_items.map(item => [
+            item.serve_date, 
+            item.meal_type, 
+            item.dish_id, 
+            'Approved' // Everything saved through this button is instantly approved
+        ]);
+
+        // 4. Bulk insert the new draft into the database
+        const insertSql = "INSERT INTO daily_menu (serve_date, meal_type, dish_id, status) VALUES ?";
+        await db.promise().query(insertSql, [values]);
+
+        res.json({ success: true, message: "Weekly menu saved and approved successfully!" });
+    } catch (err) {
+        console.error("Error syncing weekly menu:", err);
+        res.status(500).json({ error: "Failed to save weekly menu" });
+    }
+});
+
+
+FRONTEND (ASK_AI)
+
+
+  const ask_ai = async () => {
+    setAiLoading(true);
+    
+    // 1. Create a fresh kill switch for this specific request
+    abortControllerRef.current = new AbortController();
+
+    try {
+      const res = await axios.post('http://localhost:3001/api/admin/ai-generate-menu', {
+        start_date: weekDays[0].dateString,
+        end_date: weekDays[6].dateString, 
+        custom_prompt: aiPrompt
+      }, {
+        // 2. Attach the kill switch signal to Axios
+        signal: abortControllerRef.current.signal 
+      });       
+      
+      const populatedMenu = res.data.proposed_menu.map((item, index) => {
+        const dishObj = catalog.find(d => d.id === parseInt(item.dish_id));
+        if (!dishObj) return null;
+        return {
+            schedule_id: `temp_ai_${Date.now()}_${index}`,
+            serve_date: item.serve_date,
+            meal_type: item.meal_type,
+            dish_id: dishObj.id,
+            status: 'AI Draft',
+            dish_name: dishObj.dish_name,
+            diet_type: dishObj.diet_type,
+            cost: dishObj.cost,
+            effort_score: dishObj.effort_score
+        };
+      }).filter(Boolean);
+
+      setWeeklyMenu(populatedMenu);
+      setShowAIModal(false);
+      alert("AI has generated a draft! Review the metrics below and click Approve when ready.");   
+      
+    } catch (err) {
+      // 3. Check if the error was actually just the user clicking Cancel
+      if (axios.isCancel(err)) {
+        console.log("AI Generation was aborted by the user.");
+      } else {
+        alert(err.response?.data?.error || "AI Generation Failed");
+      }
+    } finally {
+      setAiLoading(false);
+    }
+  }
+
+
+
+  DISH UI
+
+  {/* THE DYNAMIC STATUS BADGE */}
+  <span className={`text-[10px] px-1.5 py-0.5 rounded uppercase tracking-wider font-bold ${
+    dish.status === 'AI Draft' ? 'bg-purple-100 text-purple-700 border border-purple-200' :
+    dish.status === 'Draft' ? 'bg-orange-100 text-orange-700 border border-orange-200' : 
+    dish.status === 'Approved' ? 'bg-blue-100 text-blue-700' : 'bg-yellow-200 text-yellow-800'}`}>
+            {dish.status === 'AI Draft' ? '✨ AI Draft' : dish.status}
+    </span>
+

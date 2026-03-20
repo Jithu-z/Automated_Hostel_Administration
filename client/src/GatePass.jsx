@@ -1,7 +1,10 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Html5QrcodeScanner } from 'html5-qrcode'; 
-import { DoorOpen, MapPin, AlertCircle } from 'lucide-react';
+import { DoorOpen, MapPin, AlertCircle, LogOut, ScanLine } from 'lucide-react';
+import toast from 'react-hot-toast';
+
+const API_BASE = 'http://10.0.9.78:3001/api'; 
 
 function GatePass() {
   const storedUser = JSON.parse(localStorage.getItem('user'));
@@ -18,116 +21,110 @@ function GatePass() {
   const [reason, setReason] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // 1. Fetch Status on Load
   useEffect(() => {
-    fetchStatus();
-  }, []);
+    if (studentId) {
+      fetchStatus();
+      fetchLogs();
+    }
+  }, [studentId]);
 
   const fetchStatus = () => {
-    axios.get(`http://10.0.8.126:3001/api/gate/status/${studentId}`)
+    axios.get(`${API_BASE}/gate/status/${studentId}`)
       .then(res => setStatus(res.data.status))
       .catch(err => console.error(err));
   };
 
   const fetchLogs = () => {
-  axios.get(`http://10.0.8.126:3001/api/student/logs/${studentId}`)
-    .then(res => setLogs(res.data))
-    .catch(err => console.error("Failed to fetch logs", err));
-};
+    axios.get(`${API_BASE}/student/logs/${studentId}`)
+      .then(res => setLogs(res.data))
+      .catch(err => console.error("Failed to fetch logs", err));
+  };
 
+  // QR Scanner Initialization
   useEffect(() => {
     if (showScanner) {
       const scanner = new Html5QrcodeScanner(
         "reader", 
         { fps: 10, qrbox: { width: 250, height: 250 } },
-        /* verbose= */ false
+        false
       );
 
       scanner.render(onScanSuccess, onScanFailure);
 
-      // Cleanup when closing modal
       return () => {
         scanner.clear().catch(error => console.error("Failed to clear scanner", error));
       };
     }
   }, [showScanner]);
 
-  useEffect(() => {
-  if (studentId) {
-    fetchStatus();
-    fetchLogs();
-  }
-}, [studentId]);
-
-  // 3. Handle Successful Scan
   const onScanSuccess = async (decodedText) => {
-    console.log(`Scan result: ${decodedText}`);
     setShowScanner(false);
     performCheckIn(decodedText);
   };
 
   const onScanFailure = (error) => {
-    // console.warn(error); // Ignore frame failures
+    // Ignore frame failures silently
   };
-
 
   const performCheckIn = async (qrData) => {
     setLoading(true);
-    try {
-      const res = await axios.post('http://10.0.8.126:3001/api/gate/log', {
+    
+    toast.promise(
+      axios.post(`${API_BASE}/gate/log`, {
         student_id: studentId,
         action: 'in',
         reason: 'Returned via Scan',
         destination: 'Hostel',
         qr_code: qrData 
-      });
-
-      if (res.data.success) {
-        setStatus('in');
-        fetchLogs();
-        alert("Verified! Welcome back.");
+      }),
+      {
+        loading: 'Verifying QR Code...',
+        success: (res) => {
+          if (res.data.success) {
+            setStatus('in');
+            fetchLogs();
+            return "Verified! Welcome back.";
+          }
+          throw new Error("Verification failed");
+        },
+        error: (err) => {
+          if (err.response?.status === 403) return "Security Alert: Invalid QR Code!";
+          return "System Error. Please try again.";
+        }
       }
-    } catch (err) {
-      if (err.response && err.response.status === 403) {
-         alert("Security Alert: Invalid QR Code!");
-      } else if (err.response) {
-         console.error("Server Error:", err.response.data);
-         alert(`System Error: ${JSON.stringify(err.response.data)}`);
-      } else {
-         console.error(err);
-         alert("Network Error");
-      }
-    } finally {
-      setLoading(false);
-    }
+    ).finally(() => setLoading(false));
   };
 
   const confirmCheckOut = async () => {
     if (!destination.trim() || !reason.trim()) {
-      alert("Please fill in both Destination and Reason.");
+      toast.error("Please fill in both Destination and Reason.");
       return; 
     }
     setLoading(true);
-    try {
-      const res = await axios.post('http://10.0.8.126:3001/api/gate/log', {
+
+    toast.promise(
+      axios.post(`${API_BASE}/gate/log`, {
         student_id: studentId,
         action: 'out',
         destination: destination,
         reason: reason
-      });
-      if (res.data.success) {
-        setStatus('out');
-        fetchLogs();
-        alert("Checked Out Successfully!");
-        setShowCheckoutModal(false);
-        setDestination('');
-        setReason('');
+      }),
+      {
+        loading: 'Processing Gatepass...',
+        success: (res) => {
+          if (res.data.success) {
+            setStatus('out');
+            fetchLogs();
+            setShowCheckoutModal(false);
+            setDestination('');
+            setReason('');
+            return "Checked Out Successfully!";
+          }
+          throw new Error("Failed to checkout");
+        },
+        error: "Error processing request. Check network."
       }
-    } catch (err) {
-      alert("Error processing request");
-    } finally {
-      setLoading(false);
-    }
+    ).finally(() => setLoading(false));
   };
 
   return (
@@ -141,97 +138,105 @@ function GatePass() {
 
       {/* Main Status Card */}
       <div className="bg-white p-6 rounded-2xl shadow-sm mb-6 border border-gray-100">
-        <p className="text-sm font-semibold text-gray-500 mb-3">Current Status</p>
+        <p className="text-sm font-semibold text-gray-500 mb-3 uppercase tracking-wider">Current Status</p>
         
-        <div className="flex items-center gap-2 mb-6">
-          <span className={`w-3 h-3 rounded-full ${status === 'in' ? 'bg-green-500' : 'bg-orange-500'}`}></span>
-          <span className={`text-lg font-bold ${status === 'in' ? 'text-green-600' : 'text-orange-600'}`}>
-            {status === 'in' ? 'Checked In' : 'Checked Out'}
+        <div className="flex items-center gap-2 mb-6 bg-gray-50 p-4 rounded-xl border border-gray-100">
+          <span className={`w-3 h-3 rounded-full animate-pulse ${status === 'in' ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]' : 'bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.6)]'}`}></span>
+          <span className={`text-xl font-black ${status === 'in' ? 'text-green-600' : 'text-orange-600'}`}>
+            {status === 'in' ? 'Checked in' : 'Checked Out'}
           </span>
         </div>
 
         {status === 'in' ? (
           <button 
             onClick={() => setShowCheckoutModal(true)}
-            className="w-full py-4 rounded-xl font-bold text-white bg-blue-600 shadow-lg shadow-blue-200 active:scale-95 transition"
+            className="w-full py-4 rounded-xl font-bold text-white bg-blue-600 shadow-lg shadow-blue-200 hover:bg-blue-700 active:scale-95 transition flex items-center justify-center gap-2"
           >
-            Check Out
+            <LogOut size={20} /> Check Out
           </button>
         ) : (
           <button 
             onClick={() => setShowScanner(true)}
-            className="w-full py-4 rounded-xl font-bold text-white bg-green-600 shadow-lg shadow-green-200 active:scale-95 transition flex items-center justify-center gap-2"
+            className="w-full py-4 rounded-xl font-bold text-white bg-green-600 shadow-lg shadow-green-200 hover:bg-green-700 active:scale-95 transition flex items-center justify-center gap-2"
           >
-            <DoorOpen size={20} /> Scan QR to Check In
+            <ScanLine size={20} /> Scan QR to Return
           </button>
         )}
       </div>
 
       {/* Recent Activity */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-        <h3 className="text-sm font-bold text-gray-800 mb-4">Recent Activity</h3>
+        <h3 className="text-sm font-bold text-gray-800 mb-4 uppercase tracking-wider">Recent Activity</h3>
   
         <div className="space-y-4">
           {logs.length === 0 ? (
-          <p className="text-gray-400 text-xs text-center py-2">No activity recorded yet.</p>
+            <p className="text-gray-400 text-xs text-center py-4 bg-gray-50 rounded-xl border border-dashed border-gray-200">No activity recorded yet.</p>
           ) : (
-          logs.map((log) => (
-          <div key={log.id} className="flex items-start gap-3 pb-3 border-b border-gray-50 last:border-0 last:pb-0">
-            <div className={`p-2 rounded-lg ${log.status === 'out' ? 'bg-orange-100 text-orange-600' : 'bg-green-100 text-green-600'}`}>
-              {log.status === 'out' ? <AlertCircle size={16}/> : <DoorOpen size={16}/>}
-            </div>
-            <div>
-              <p className="text-sm font-bold text-gray-800 capitalize">
-                {log.status === 'out' ? 'Checked Out' : 'Returned'}
-              </p>
-              <p className="text-xs text-gray-500">
-                {new Date(log.exit_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} 
-                {' • '} 
-                {new Date(log.exit_time).toLocaleDateString()}
-              </p>
-              {/* Show Reason if Out */}
-              {log.status === 'out' && (
-                <p className="text-[10px] text-gray-400 mt-1">To: {log.destination}</p>
-              )}
-              </div>
+            logs.map((log) => (
+              <div key={log.id} className="flex items-start gap-4 pb-4 border-b border-gray-50 last:border-0 last:pb-0">
+                <div className={`p-2.5 rounded-xl shrink-0 ${log.status === 'out' ? 'bg-orange-50 text-orange-600' : 'bg-green-50 text-green-600'}`}>
+                  {log.status === 'out' ? <LogOut size={18}/> : <DoorOpen size={18}/>}
+                </div>
+                <div className="flex-grow">
+                  <div className="flex justify-between items-start">
+                    <p className="text-sm font-bold text-gray-800 capitalize">
+                      {log.status === 'out' ? 'Checked Out' : 'Returned'}
+                    </p>
+                    <p className="text-[10px] font-bold text-gray-400">
+                      {new Date(log.exit_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {new Date(log.exit_time).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
+                  </p>
+                  
+                  {log.status === 'out' && (
+                    <div className="mt-2 bg-gray-50 p-2 rounded-lg border border-gray-100">
+                      <p className="text-[10px] text-gray-500 font-medium"><span className="font-bold text-gray-700">To:</span> {log.destination}</p>
+                      {log.reason && <p className="text-[10px] text-gray-500 font-medium line-clamp-1"><span className="font-bold text-gray-700">Reason:</span> {log.reason}</p>}
+                    </div>
+                  )}
+                </div>
               </div>
             ))
           )}
         </div>
-    </div>
+      </div>
 
       {/* --- CHECKOUT MODAL --- */}
       {showCheckoutModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4">
-          <div className="bg-white mb-8 w-full max-w-sm rounded-3xl p-6 animate-slide-up">
-            <h3 className="text-xl font-bold text-gray-900 mb-2">Check Out</h3>
-            <div className="space-y-4 mt-4">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4">
+          <div className="bg-white mb-20 sm:mb-0 w-full max-w-sm rounded-3xl p-6 animate-slide-up shadow-2xl">
+            <h3 className="text-xl font-bold text-gray-900 mb-1">Check Out Form</h3>
+            <p className="text-xs text-gray-500 mb-4">Please log your destination for safety.</p>
+            
+            <div className="space-y-4">
               <div>
-                <label className="text-xs font-bold text-gray-700 uppercase">Destination</label>
-                <div className="flex items-center bg-gray-50 rounded-xl mt-1 p-3 border border-gray-100">
-                  <MapPin size={18} className="text-gray-400 mr-2"/>
+                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Destination</label>
+                <div className="flex items-center bg-gray-50 rounded-xl mt-1 p-3 border border-gray-200 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100 transition-all">
+                  <MapPin size={18} className="text-gray-400 mr-2 shrink-0"/>
                   <input 
-                    className="bg-transparent w-full outline-none text-sm" 
+                    className="bg-transparent w-full outline-none text-sm font-medium text-gray-800" 
                     placeholder="Where are you going?"
                     value={destination}
-                    onChange={(e) => setDestination(e.target.value)}
+                    onChange={(e) => setDestination(e.target.value.replace(/[^a-zA-Z\s]/g, ''))}
                   />
                 </div>
               </div>
               <div>
-                <label className="text-xs font-bold text-gray-700 uppercase">Reason</label>
+                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Reason</label>
                 <textarea 
-                  className="w-full bg-gray-50 rounded-xl mt-1 p-3 border border-gray-100 outline-none text-sm h-20 resize-none" 
+                  className="w-full bg-gray-50 rounded-xl mt-1 p-3 border border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none text-sm font-medium text-gray-800 h-24 resize-none transition-all" 
                   value={reason}
-                  placeholder='enter reason'
-                  onChange={(e) => setReason(e.target.value)}
+                  placeholder='E.g., Visiting home, grocery shopping...'
+                  onChange={(e) => setReason(e.target.value.replace(/[^a-zA-Z\s]/g, ''))}
                 />
               </div>
             </div>
             <div className="flex gap-3 mt-6">
-              <button onClick={() => setShowCheckoutModal(false)} className="flex-1 py-3 rounded-xl font-bold text-gray-600 bg-gray-100">Cancel</button>
-              <button onClick={confirmCheckOut} disabled={loading} className="flex-1 py-3 rounded-xl font-bold text-white bg-blue-600 shadow-md">
-                {loading ? '...' : 'Confirm'}
+              <button onClick={() => setShowCheckoutModal(false)} className="flex-1 py-3 rounded-xl font-bold text-gray-500 bg-gray-100 hover:bg-gray-200 transition">Cancel</button>
+              <button onClick={confirmCheckOut} disabled={loading} className="flex-1 py-3 rounded-xl font-bold text-white bg-blue-600 shadow-md hover:bg-blue-700 transition disabled:opacity-70">
+                {loading ? 'Processing...' : 'Confirm'}
               </button>
             </div>
           </div>
@@ -240,16 +245,19 @@ function GatePass() {
 
       {/* --- SCANNER MODAL --- */}
       {showScanner && (
-        <div className="fixed inset-0 bg-black z-[60] flex flex-col items-center justify-center">
-          <div className="w-full max-w-sm p-4">
-            <h3 className="text-white text-center font-bold mb-4">Align QR Code</h3>
-            {/* The ID 'reader' is where the camera renders */}
-            <div id="reader" className="bg-white rounded-xl overflow-hidden shadow-2xl"></div>
+        <div className="fixed inset-0 bg-black/90 z-[60] flex flex-col items-center justify-center backdrop-blur-md">
+          <div className="w-full max-w-sm p-6 flex flex-col items-center">
+            <ScanLine size={48} className="text-green-400 mb-4 animate-pulse" />
+            <h3 className="text-white text-xl font-bold mb-2">Scan Kiosk QR</h3>
+            <p className="text-gray-400 text-sm text-center mb-8">Point your camera at the QR code displayed at the security desk to check in.</p>
+            
+            <div id="reader" className="w-full bg-white rounded-2xl overflow-hidden shadow-[0_0_30px_rgba(74,222,128,0.2)]"></div>
+            
             <button 
               onClick={() => setShowScanner(false)}
-              className="mt-8 w-full py-3 bg-red-600 text-white font-bold rounded-xl"
+              className="mt-8 w-full py-4 bg-gray-800 hover:bg-gray-700 text-white font-bold rounded-xl transition"
             >
-              Close Camera
+              Cancel
             </button>
           </div>
         </div>

@@ -15,15 +15,12 @@ const OvernightLogTab = () => {
   const [stats, setStats] = useState({ out_now: 0, total_students: 50 });
   const [recentLogs, setRecentLogs] = useState([]);
   const [outStudents, setOutStudents] = useState([]);
-
   const [showOutModal, setShowOutModal] = useState(false);
   const [loading, setLoading] = useState(false);
-
   const [absentSearch, setAbsentSearch] = useState('');
   const [gateSearch, setGateSearch] = useState('');
   const [gateFilter, setGateFilter] = useState('All');
   const [gateDate, setGateDate] = useState(''); // Empty string means "All Time"
-
   const [isLocked, setIsLocked] = useState(false);
 
   // Initial Data Fetch (Only for Home Tab)
@@ -44,6 +41,7 @@ const OvernightLogTab = () => {
       .finally(() => setLoading(false));
   };
 
+  // 1. The actual database call (Runs ONLY if they click Confirm)
   const executeCheckin = async (uid) => {
     setLoading(true);
     try {
@@ -73,7 +71,7 @@ const OvernightLogTab = () => {
       setOutStudents(res.data);
       setShowOutModal(true);
     } catch (err) {
-      toast.error("Failed to fetch student data."); 
+      toast.error("Failed to fetch student data."); // ✨ Upgraded
     }
   };
   
@@ -122,6 +120,7 @@ const OvernightLogTab = () => {
 
   // 2. The Custom Confirmation UI
   const checkinOverride = (uid) => {
+    // We pass 't' (the toast object) so we can dismiss this specific popup when a button is clicked
     setIsLocked(true);
     toast((t) => (
       <div className="flex flex-col gap-3 min-w-[250px]">
@@ -138,7 +137,7 @@ const OvernightLogTab = () => {
           </button>
           <button
             onClick={() => {
-              toast.dismiss(t.id); 
+              toast.dismiss(t.id); // Hide the popup
               executeCheckin(uid);
               setIsLocked(false); 
             }}
@@ -149,8 +148,8 @@ const OvernightLogTab = () => {
         </div>
       </div>
     ), { 
-      duration: Infinity, // Keeps it open until button click
-      id: `confirm-${uid}` // Prevents spam-clicking and opening 5 popups
+      duration: Infinity, // Keeps it open until they click a button
+      id: `confirm-${uid}` // Prevents them from spam-clicking and opening 5 popups
     });
   }
 
@@ -161,8 +160,8 @@ const OvernightLogTab = () => {
         (s.full_name || '').toLowerCase().includes(term) || 
         (s.uid || '').toLowerCase().includes(term) ||
         (s.room_no || '').toLowerCase().includes(term) ||
-        (s.branch || '').toLowerCase().includes(term) || 
-        (s.batch || '').toLowerCase().includes(term)     
+        (s.branch || '').toLowerCase().includes(term) || // ✨ NEW: Search by Branch
+        (s.batch || '').toLowerCase().includes(term)     // ✨ NEW: Search by Batch
       );
   });
 
@@ -171,9 +170,9 @@ const OvernightLogTab = () => {
       const term = gateSearch.toLowerCase();
       const matchText = (log.full_name || '').toLowerCase().includes(term) || 
                         (log.uid || '').toLowerCase().includes(term) ||
-                        (log.room_no || '').toLowerCase().includes(term) || 
-                        (log.branch || '').toLowerCase().includes(term) ||  
-                        (log.batch || '').toLowerCase().includes(term);     
+                        (log.room_no || '').toLowerCase().includes(term) || // ✨ NEW
+                        (log.branch || '').toLowerCase().includes(term) ||  // ✨ NEW
+                        (log.batch || '').toLowerCase().includes(term);     // ✨ NEW
                         
       const matchFilter = gateFilter === 'All' 
         ? true 
@@ -488,11 +487,9 @@ const GrievancesTab = () => {
   const [grievances, setGrievances] = useState([]);
   const [loading, setLoading] = useState(false);
   const [viewMode, setViewMode] = useState('active'); 
-
   const [filterCategory, setFilterCategory] = useState('All'); 
   const [filterStatus, setFilterStatus] = useState('All');
   const [searchTerm, setSearchTerm] = useState('');
-
   const [evidenceModal, setEvidenceModal] = useState(null);
   const [isLocked, setIsLocked] = useState(false);
 
@@ -675,7 +672,7 @@ const GrievancesTab = () => {
     ), { id: 'assign-all', duration: Infinity });
   };
 
-  //  FILTERS 
+  // ✨ FILTERS (UPGRADED)
   const filteredGrievances = grievances.filter(g => {
     const isResolved = g.status === 'Resolved';
     if (viewMode === 'active' && isResolved) return false;
@@ -685,6 +682,7 @@ const GrievancesTab = () => {
     }
     if (filterCategory !== 'All' && g.category !== filterCategory) return false;
     
+    // ✨ Search by UID, Name, Student Room, Issue Location, Branch, or Batch
     if (searchTerm !== '') {
         const lowerTerm = searchTerm.toLowerCase();
         const matchUid = (g.uid || '').toLowerCase().includes(lowerTerm);
@@ -883,6 +881,7 @@ const GrievancesTab = () => {
                   <p className="text-sm text-gray-500 font-medium mt-0.5">{g.uid}</p>
                   
                   <div className="mt-3 flex flex-col gap-1.5 items-start">
+                    {/* ✨ UPGRADED: Explicitly shows their dorm room */}
                     <span className="inline-flex items-center gap-1.5 px-2 py-1 bg-gray-100 text-gray-600 rounded-md text-xs font-bold border border-gray-200 shadow-sm">
                       🛏️ Room {g.student_room || 'Unassigned'}
                     </span>
@@ -904,6 +903,7 @@ const GrievancesTab = () => {
               <div className="flex-1 flex flex-col justify-between">
                 <div>
                   <div className="flex justify-between items-start mb-3">
+                    {/* ✨ UPGRADED: Side-by-side Category and Location badges */}
                     <div className="flex gap-2 items-center flex-wrap">
                       <span className="text-sm px-2.5 py-1 bg-gray-100 text-gray-600 rounded-md border border-gray-200 font-bold uppercase tracking-wider">
                           {g.category}
@@ -1000,6 +1000,7 @@ const GrievancesTab = () => {
 };
 
 const StudentMgmtTab = () => {
+  //whitelisted branches
   const ALLOWED_BRANCHES = ['CSE', 'CIVIL', 'MECHANICAL', 'ELECTRICAL', 'ECE', 'IT', 'AIDS'];
   
   const [students, setStudents] = useState([]);
@@ -1007,7 +1008,7 @@ const StudentMgmtTab = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [uploadingStudents, setUploadingStudents] = useState(false);
 
-  // Academic Filters
+  // ✨ NEW: Academic Filters
   const [filterBatch, setFilterBatch] = useState('All');
   const [filterBranch, setFilterBranch] = useState('All');
 
@@ -1015,14 +1016,16 @@ const StudentMgmtTab = () => {
   const [editingId, setEditingId] = useState(null); 
   const [editForm, setEditForm] = useState({}); 
 
-  // Add Student State
+  // ✨ NEW: Add Student State
   const [showAddModal, setShowAddModal] = useState(false);
+  // ✨ NEW: State for the Upload Guide Modal
   const [showUploadGuide, setShowUploadGuide] = useState(false);
 
   const [newStudent, setNewStudent] = useState({
     uid: '', full_name: '', dob: '', phone_no: '', room_no: '', batch: '', branch: '', address: ''
   });
   
+  // ✨ NEW: The Invisible Shield
   const [isLocked, setIsLocked] = useState(false);
 
   // --- ADD STUDENT LOGIC ---
@@ -1101,13 +1104,8 @@ const handleStudentCSVUpload = async (e) => {
           fetchStudents(); 
           return res.data.message;
         },
-        // display the exact Row Number that caused the crash
-        error: (err) => {
-          return err.response?.data?.error || 'Server error during upload.';
-        },
-      },
-      {
-        error: { duration: 6000 } 
+        // ✨ NEW: Dynamically pull the exact error message from the backend!
+        error: (err) => err.response?.data?.error || 'Server error during upload.',
       }
     ).finally(() => {
       setUploadingStudents(false);
@@ -1115,9 +1113,10 @@ const handleStudentCSVUpload = async (e) => {
     });
   };
 
+  // ✨ NEW: Generates a CSV template on the fly
   const downloadTemplate = () => {
     const headers = "uid,full_name,dob,phone_no,address,room_no,batch,branch\n";
-
+    // ✨ Updated dummy data so they know exactly how the date should look
     const dummyData = "u2303004,Abhijith sreegith krishna,18-05-2005,9074907104,123 Campus Hostel,E-27,2023-27,CSE\n";
     
     const blob = new Blob([headers + dummyData], { type: 'text/csv' });
@@ -1159,7 +1158,7 @@ const handleStudentCSVUpload = async (e) => {
     });
   };
 
-// Converts standard DB date into readable text for the table
+// ✨ Converts standard DB date into clean readable text for the table
   const formatDOB = (dobString) => {
     if (!dobString) return "N/A";
     const date = new Date(dobString);
@@ -1169,11 +1168,11 @@ const handleStudentCSVUpload = async (e) => {
     return date.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' }); 
   };
 
-  // Dynamically extract unique batches and branches from the data for the dropdowns
+  // ✨ NEW: Dynamically extract unique batches and branches from the data for the dropdowns
   const uniqueBatches = [...new Set(students.map(s => s.batch).filter(Boolean))].sort();
-  // const uniqueBranches = [...new Set(students.map(s => s.branch).filter(Boolean))].sort();
+  const uniqueBranches = [...new Set(students.map(s => s.branch).filter(Boolean))].sort();
 
-  // Filter Logic now handles
+  // ✨ UPGRADED: Filter Logic now handles Search + Batch + Branch
   const filteredStudents = students.filter(s => {
     const term = searchTerm.toLowerCase();
     
@@ -1361,7 +1360,7 @@ const handleStudentCSVUpload = async (e) => {
                                 className="w-full px-3 py-1.5 border border-blue-300 rounded outline-none focus:ring-2 focus:ring-blue-500 text-sm shadow-sm"
                                 placeholder="Phone Number"
                               />
-                              {/* Inline Edit inputs for Branch & Batch */}
+                              {/* ✨ NEW: Inline Edit inputs for Branch & Batch */}
                               <div className="flex gap-2">
                                 {/* Fixed: Removed label, updated state to editForm, matched CSS styling */}
                                 <select 
@@ -1394,7 +1393,7 @@ const handleStudentCSVUpload = async (e) => {
                               <p className="font-bold text-gray-800">{s.full_name}</p>
                               <p className="text-sm text-gray-500 font-medium">{s.uid}</p>
                               
-                              {/*  Academic Pills */}
+                              {/* ✨ NEW: Academic Pills */}
                               <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
                                 {s.branch && (
                                   <span className="px-2 py-0.5 bg-purple-50 text-purple-700 rounded text-[10px] font-black uppercase tracking-wider border border-purple-100">
@@ -1434,7 +1433,7 @@ const handleStudentCSVUpload = async (e) => {
                                 rows={2}
                                 placeholder="Home Address"
                               />
-                              {/* The missing DOB Calendar Input! */}
+                              {/* ✨ NEW: The missing DOB Calendar Input! */}
                               <div className="flex items-center gap-2">
                                 <Calendar size={14} className="text-gray-400 shrink-0" />
                                 <input 
@@ -1494,7 +1493,7 @@ const handleStudentCSVUpload = async (e) => {
                               >
                                   <Save size={14} /> Save
                               </button>
-
+                              {/* ✨ NEW: Delete Button */}
                             <button 
                               onClick={() => handleDelete(s)} 
                               className="p-2 text-gray-400 hover:bg-red-50 hover:text-red-600 rounded-lg transition-colors border border-transparent hover:border-red-100"
@@ -1521,8 +1520,10 @@ const handleStudentCSVUpload = async (e) => {
           </table>
         </div>
       </div>
+    {/* 🔒 THE INVISIBLE SHIELD for Delete Toast */}
       {isLocked && <div className="fixed inset-0 z-[999] bg-black/10 backdrop-blur-[2px] cursor-not-allowed" />}
 
+      {/* ✨ NEW: ADD STUDENT MODAL */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fade-in">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden">
@@ -1597,64 +1598,50 @@ const handleStudentCSVUpload = async (e) => {
           </div>
         </div>
       )}
-
+      {/* ✨ NEW: CSV UPLOAD GUIDE MODAL */}
       {showUploadGuide && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fade-in">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden">
             <div className="flex justify-between items-center p-5 border-b border-gray-100 bg-gray-50/50">
               <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-                <HelpCircle size={20} className="text-blue-600" /> CSV Import Specifications
+                <HelpCircle size={20} className="text-blue-600" /> CSV Formatting Rules
               </h2>
               <button onClick={() => setShowUploadGuide(false)} className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100 transition"><X size={20}/></button>
             </div>
             
             <div className="p-6 space-y-5 text-sm text-gray-600">
+              <p>To successfully upload students via CSV, please ensure your data matches these exact formats. If a row is invalid, the system will skip it.</p>
               
-              {/* ✨ NEW: Professional Validation Warning Box */}
-              <div className="bg-orange-50 border border-orange-200 p-4 rounded-xl">
-                <p className="font-bold text-orange-800 flex items-center gap-2 mb-1.5">
-                  <AlertOctagon size={16} /> Data Integrity Protocol
-                </p>
-                <p className="text-orange-700 text-sm leading-relaxed">
-                  To ensure database consistency, bulk imports are processed as atomic transactions. Any formatting error or missing mandatory field (e.g., UID) will cause the entire batch upload to abort. Error logs will specify the exact row number requiring correction prior to re-upload.
-                </p>
-                <div className="mt-3 pt-3 border-t border-orange-200/50 flex items-start gap-2 text-green-700 text-xs font-bold">
-                  <CheckCircle size={14} className="shrink-0 mt-0.5" />
-                  <p>Duplicate Handling: Rows containing UIDs already registered in the database will be automatically bypassed without triggering an import failure.</p>
-                </div>
-              </div>
-              
-              <p className="text-sm font-medium text-gray-700">Please adhere to the following schema requirements for successful data ingestion:</p>
-
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="p-4 bg-gray-50 border border-gray-100 rounded-xl">
                   <span className="font-bold text-gray-800 block mb-1">UID</span>
-                  Must commence with 'U' followed by exactly 7 numeric digits.<br/>
-                  <code className="text-xs bg-white px-1.5 py-0.5 rounded border border-gray-200 mt-1 inline-block text-green-600 shadow-sm">Valid: U1234567</code>
+                  Must start with 'U' followed by exactly 7 digits.<br/>
+                  <code className="text-xs bg-white px-1.5 py-0.5 rounded border border-gray-200 mt-1 inline-block text-green-600">Valid: U1234567</code>
                 </div>
                 
                 <div className="p-4 bg-gray-50 border border-gray-100 rounded-xl">
                   <span className="font-bold text-gray-800 block mb-1">Date of Birth (dob)</span>
-                  Accepted formats: DD-MM-YYYY or DD/MM/YYYY.<br/>
-                  <code className="text-xs bg-white px-1.5 py-0.5 rounded border border-gray-200 mt-1 inline-block text-green-600 shadow-sm">Valid: 15-08-2005</code>
+                  Must be DD-MM-YYYY or DD/MM/YYYY.<br/>
+                  <code className="text-xs bg-white px-1.5 py-0.5 rounded border border-gray-200 mt-1 inline-block text-green-600">Valid: 15-08-2005</code>
                 </div>
 
                 <div className="p-4 bg-gray-50 border border-gray-100 rounded-xl">
                   <span className="font-bold text-gray-800 block mb-1">Room (room_no)</span>
-                  Required format: Single alphabet character, hyphen, followed by digits.<br/>
-                  <code className="text-xs bg-white px-1.5 py-0.5 rounded border border-gray-200 mt-1 inline-block text-green-600 shadow-sm">Valid: A-101, B-22</code>
+                  Must be a single letter, a dash, and a number.<br/>
+                  <code className="text-xs bg-white px-1.5 py-0.5 rounded border border-gray-200 mt-1 inline-block text-green-600">Valid: A-101, B-22</code>
                 </div>
 
                 <div className="p-4 bg-gray-50 border border-gray-100 rounded-xl">
                   <span className="font-bold text-gray-800 block mb-1">Batch</span>
-                  Required format: YYYY-YY.<br/>
-                  <code className="text-xs bg-white px-1.5 py-0.5 rounded border border-gray-200 mt-1 inline-block text-green-600 shadow-sm">Valid: 2023-27</code>
+                  Must be in YYYY-YY format.<br/>
+                  <code className="text-xs bg-white px-1.5 py-0.5 rounded border border-gray-200 mt-1 inline-block text-green-600">Valid: 2023-27</code>
                 </div>
               </div>
 
               <div className="p-4 bg-blue-50 border border-blue-100 rounded-xl">
-                <span className="font-bold text-blue-800 block mb-2">Permitted Branches (Exact Match Required)</span>
+                <span className="font-bold text-blue-800 block mb-2">Allowed Branches (Exact Match)</span>
                 <div className="flex flex-wrap gap-2">
+                  {/* ✨ Dynamically maps your whitelist so it is NEVER outdated! */}
                   {ALLOWED_BRANCHES.map(branch => (
                     <span key={branch} className="px-2 py-1 bg-white border border-blue-200 text-blue-700 text-xs font-bold rounded-md shadow-sm">
                       {branch}
@@ -1665,8 +1652,8 @@ const handleStudentCSVUpload = async (e) => {
             </div>
 
             <div className="p-5 border-t border-gray-100 bg-gray-50/50 flex justify-end">
-              <button onClick={() => setShowUploadGuide(false)} className="px-5 py-2.5 bg-gray-800 text-white rounded-xl text-sm font-bold hover:bg-gray-900 transition shadow-sm">
-                Acknowledge
+              <button onClick={() => setShowUploadGuide(false)} className="px-5 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition shadow-sm">
+                Got it
               </button>
             </div>
           </div>
@@ -1829,11 +1816,9 @@ const MenuTab = () =>{
     // --- STATE ---
   const [weeklyMenu, setWeeklyMenu] = useState([]);
   const [catalog, setCatalog] = useState([]);
-
   const [catalogSearch, setCatalogSearch] = useState('');
   const [catalogDietFilter, setCatalogDietFilter] = useState('All');
   const [catalogSort, setCatalogSort] = useState('name');
-
 // Change the dummy data to empty 24-hour formats
   const [mealTimings, setMealTimings] = useState({
     Breakfast: { start: '00:00', end: '00:00' },
@@ -1874,7 +1859,7 @@ const MenuTab = () =>{
     e.preventDefault();
     if (!selectedDishId) return toast.error("Please select a dish!");
     
-    //  The strict 2 item bouncer
+    // ✨ NEW: The strict 2-item bouncer
     const existingDishesInSlot = getDishesForSlot(assignModalData.dateString, assignModalData.mealType);
     if (existingDishesInSlot.length >= 2) {
       toast.error(`Maximum 2 dishes allowed for ${assignModalData.mealType}.`);
@@ -2066,7 +2051,6 @@ const MenuTab = () =>{
     ), { id: 'publish-week', duration: Infinity });
   };
 
-  //bulk csv upload
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -2118,7 +2102,7 @@ const MenuTab = () =>{
 
       const uploadedDates = [...new Set(rows.map(rowStr => rowStr.split(',')[dateIdx].trim()))];
       
-      // Figure out exactly what days the Warden is looking at right now
+      // ✨ NEW: Figure out exactly what days the Warden is looking at right now
       const currentVisibleDates = weekDays.map(d => d.dateString);
 
       const draftMenu = weeklyMenu.filter(m => {
@@ -2130,7 +2114,7 @@ const MenuTab = () =>{
       let limitErrors = 0;
       let newItemsCount = 0;
       let addedCount = 0;
-      let hiddenCount = 0; // Track off-screen meals
+      let hiddenCount = 0; // ✨ NEW: Track off-screen meals
 
       rows.forEach((rowStr, index) => {
         const row = rowStr.split(',').map(v => v.trim());
@@ -2143,7 +2127,7 @@ const MenuTab = () =>{
         const cost = costIdx !== -1 ? (parseInt(row[costIdx]) || 0) : 0;
         const effortScore = effortIdx !== -1 ? (parseInt(row[effortIdx]) || 5) : 5;
 
-        // GUARDRAILS
+        // 🛡️ GUARDRAILS
         if (!/(&|\+|\band\b)/i.test(dishName)) {
           comboErrors++;
           return;
@@ -2174,7 +2158,7 @@ const MenuTab = () =>{
         addedCount++;
         if (!existingDish) newItemsCount++;
         
-        // if scheduled a meal for a week the Warden isn't looking at?
+        // ✨ NEW: Did we just schedule a meal for a week the Warden isn't looking at?
         if (!currentVisibleDates.includes(serveDate)) {
           hiddenCount++;
         }
@@ -2182,7 +2166,7 @@ const MenuTab = () =>{
 
       setWeeklyMenu(draftMenu);
 
-      //  UPGRADED Dynamic Toast Reporting
+      // ✨ UPGRADED Dynamic Toast Reporting
       const visibilityMsg = hiddenCount > 0 
         ? `\nNote: ${hiddenCount} meals are scheduled for a different week. Navigate to those dates to see them.` 
         : "";
@@ -3272,7 +3256,7 @@ const MenuTab = () =>{
 
               <div className="p-4 bg-purple-50 border border-purple-100 rounded-xl">
                 <span className="font-bold text-purple-800 block mb-2 flex items-center gap-2"><Sparkles size={16}/> Auto-Catalog Creation</span>
-                <p className="text-purple-700">If you include a <code className="bg-white px-1 rounded text-purple-800 font-bold border border-purple-200">dish_name</code> that isn't in your existing catalog, the system will tag it as a <b>NEW RECIPE</b> draft. When you click Publish, it will automatically be minted into your permanent catalog!</p>
+                <p className="text-purple-700">If you include a <code className="bg-white px-1 rounded text-purple-800 font-bold border border-purple-200">dish_name</code> that isn't in your existing catalog, the system will tag it as a <b>✨ NEW RECIPE</b> draft. When you click Publish, it will automatically be minted into your permanent catalog!</p>
               </div>
             </div>
 
@@ -3345,7 +3329,6 @@ const MenuTab = () =>{
 const MessReviewsTab = () => {
   const [allReviews, setAllReviews] = useState([]);
   const [catalog, setCatalog] = useState([]);
-
   const [loading, setLoading] = useState(true);
   const [isSyncingMath, setIsSyncingMath] = useState(false);
 
@@ -3373,7 +3356,7 @@ const MessReviewsTab = () => {
       setCatalog(catRes.data);
     } catch (err) {
       console.error("Failed to fetch dashboard data", err);
-      toast.error("Failed to fetch dashboard data."); 
+      toast.error("Failed to fetch dashboard data."); // ✨ Replaced console error with Toast
     } finally {
       setLoading(false);
     }
@@ -3443,6 +3426,7 @@ const MessReviewsTab = () => {
     };
   }, [allReviews, catalog, filterMeal, filterDiet, filterRating, filterDate]);
 
+  // ✨ UPGRADED: AI Insights with Toast Promise
   const handleGenerateInsights = () => {
     if (filteredReviews.length === 0) {
       toast.error("No reviews to analyze!");
@@ -3466,6 +3450,7 @@ const MessReviewsTab = () => {
     ).finally(() => setGeneratingAI(false));
   };
 
+  // ✨ UPGRADED: Math Sync with Toast Promise & Auto-Refresh
   const handleForceMathSync = () => {
     setIsSyncingMath(true);
     
@@ -3632,7 +3617,7 @@ const MessReviewsTab = () => {
           {/* COL 3: Triage Filters */}
           <div className="bg-white rounded-2xl shadow-sm p-6 border border-gray-100 flex flex-col justify-center">
             <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2 text-sm uppercase tracking-wider">
-              <Filter size={18} className="text-blue-500"/> Filters
+              <Filter size={18} className="text-blue-500"/> Triage Controls
             </h3>
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -3737,13 +3722,8 @@ const MessReviewsTab = () => {
 
 // Main layout
 function WardenDashboard() {
-  const [activeTab, setActiveTab] = useState(() => {
-    return localStorage.getItem('wardenActiveTab') || 'home';
-  });
-
-  useEffect(() => {
-    localStorage.setItem('wardenActiveTab', activeTab);
-  }, [activeTab]);  
+  const [activeTab, setActiveTab] = useState('home');
+  
   // Sidebar 
   const menuItems = [
     { id: 'home', label: 'Home', icon: <Home size={20} /> },
@@ -3784,7 +3764,7 @@ function WardenDashboard() {
           ))}
         </nav>
 
-        {/* <div className="p-4 border-t border-gray-100 space-y-1">
+        <div className="p-4 border-t border-gray-100 space-y-1">
           <button className="w-full flex items-center gap-3 px-4 py-3 text-gray-400 hover:text-gray-600 text-sm font-medium">
             <Settings size={20} /> Settings
           </button>
@@ -3794,7 +3774,7 @@ function WardenDashboard() {
           >
             <LogOut size={20} /> Sign Out
           </button>
-        </div> */}
+        </div>
       </aside>
 
       {/* MAIN CONTENT AREA */}

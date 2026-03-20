@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
+const API_BASE = 'http://10.0.9.78:3001/api'; 
 
 function Login({ setUser }) {
   const [uid, setuid] = useState('');
@@ -12,10 +13,10 @@ function Login({ setUser }) {
  const handleLogin = async (e) => {
     e.preventDefault();
     setLoading(true);
-    setError(''); // Clear previous errors
+    setError(''); 
 
     try {
-      const res = await axios.post('http://10.0.8.126:3001/api/auth/login', {
+      const res = await axios.post(`${API_BASE}/auth/login`, {
         uid,
         password
       });
@@ -55,6 +56,8 @@ function Login({ setUser }) {
         <span>{error}</span>
         </div>
       )}
+
+      {/* User Inputs*/}
       <div className="bg-white p-8 rounded-2xl shadow-lg w-full max-w-sm">
         <div className="mb-4">
           <label className="block text-sm font-semibold text-gray-700 mb-2">College UID</label>
