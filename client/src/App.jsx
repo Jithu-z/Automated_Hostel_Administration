@@ -7,6 +7,7 @@ import StudentComplaint from './StudentComplaint';
 import WardenDashboard from './WardenDashboard';
 import MessReview from './MessReview';
 import { Toaster } from 'react-hot-toast'; 
+import { Toaster } from 'react-hot-toast'; 
 
 function App() {
   const [user, setUser] = useState(() => {
@@ -43,6 +44,7 @@ function App() {
         </Route>
       </Routes>
     </BrowserRouter>
+  </>
   </>
   );
 }

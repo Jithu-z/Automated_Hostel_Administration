@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import axios from 'axios';
 import { 
   Home,Star,Clock,RefreshCw,Trash2,Search, CheckCircle, ClipboardList, Utensils, Moon, AlertCircle, Users, Settings, LogOut, 
@@ -11,6 +12,7 @@ const SERVER_URL = 'http://localhost:3001';
 const API_BASE = `${SERVER_URL}/api`;
 // --- SUB-COMPONENTS  ---
 
+const OvernightLogTab = () => {
 const OvernightLogTab = () => {
   const [stats, setStats] = useState({ out_now: 0, total_students: 50 });
   const [recentLogs, setRecentLogs] = useState([]);
@@ -40,6 +42,8 @@ const OvernightLogTab = () => {
         setStats(res.data.stats);
         setRecentLogs(res.data.recent_logs);
       })
+      .catch(err => console.error("Dashboard fetch error", err)) // We leave this as console.error so it doesn't spam toasts every 5 seconds if the Wi-Fi drops!
+      .finally(() => setLoading(false));
       .catch(err => console.error("Dashboard fetch error", err)) // We leave this as console.error so it doesn't spam toasts every 5 seconds if the Wi-Fi drops!
       .finally(() => setLoading(false));
   };
@@ -180,7 +184,10 @@ const OvernightLogTab = () => {
         : (gateFilter === 'Checked Out' ? log.status === 'out' : log.status === 'returned');
       const logDateString = new Date(log.exit_time).toISOString().split('T')[0];
       const matchDate = gateDate === '' ? true : logDateString === gateDate;
+      const logDateString = new Date(log.exit_time).toISOString().split('T')[0];
+      const matchDate = gateDate === '' ? true : logDateString === gateDate;
 
+      return matchText && matchFilter && matchDate;
       return matchText && matchFilter && matchDate;
   });
 
@@ -216,17 +223,56 @@ const OvernightLogTab = () => {
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
       
       {/* Students Out Card (Clickable) */}
+    {isLocked && (
+        <div className="fixed inset-0 z-[40] bg-black/10 backdrop-blur-[2px] cursor-not-allowed" />
+      )}
+    {/* --- HEADER & GLOBAL ACTIONS --- */}
+    <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+      <div>
+        <h1 className="text-2xl font-bold text-gray-800">Overnight Logs</h1>
+        <p className="text-sm text-gray-500 mt-1">Monitor live campus exits and entries.</p>
+      </div>
+      <div className="flex items-center gap-3 w-full md:w-auto">
+        <button 
+          onClick={handleReset}
+          className="flex-1 md:flex-none px-4 py-2.5 bg-red-50 text-red-600 font-bold border border-red-200 rounded-xl hover:bg-red-100 hover:border-red-300 transition text-sm flex items-center justify-center gap-2 active:scale-95"
+        >
+          <AlertTriangle size={16} /> Factory Reset
+        </button>
+        <button 
+          onClick={fetchOvernightLogData} 
+          className="p-2.5 bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md transition active:scale-95"
+          title="Refresh Data"
+        >
+          <RefreshCw size={18} className={`text-blue-600 ${loading ? 'animate-spin' : ''}`} />
+        </button>
+      </div>
+    </div>
+    
+    {/* --- STATS GRID --- */}
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+      
+      {/* Students Out Card (Clickable) */}
       <div 
         onClick={handleOutClick} 
         className="bg-red-50 p-6 rounded-2xl border border-red-100 cursor-pointer hover:shadow-md hover:border-red-300 transition-all group relative overflow-hidden"
+        className="bg-red-50 p-6 rounded-2xl border border-red-100 cursor-pointer hover:shadow-md hover:border-red-300 transition-all group relative overflow-hidden"
       >
+        <div className="absolute top-0 right-0 w-32 h-32 bg-red-100 rounded-bl-full opacity-50 -z-10 group-hover:scale-110 transition-transform"></div>
+        <div className="flex justify-between items-start z-10">
         <div className="absolute top-0 right-0 w-32 h-32 bg-red-100 rounded-bl-full opacity-50 -z-10 group-hover:scale-110 transition-transform"></div>
         <div className="flex justify-between items-start z-10">
           <div>
             <p className="text-sm font-bold text-red-400 uppercase tracking-wider mb-1">Currently Out</p>
             <h3 className="text-4xl font-black text-red-700">{stats.out_now}</h3>
+            <p className="text-sm font-bold text-red-400 uppercase tracking-wider mb-1">Currently Out</p>
+            <h3 className="text-4xl font-black text-red-700">{stats.out_now}</h3>
           </div>
           <div className="p-3 bg-red-200/50 rounded-xl text-red-600"><LogOut size={24}/></div>
+          <div className="p-3 bg-red-200/50 rounded-xl text-red-600"><LogOut size={24}/></div>
+        </div>
+        <div className="mt-4 flex items-center text-sm font-bold text-red-600 gap-1 group-hover:translate-x-1 transition-transform">
+          View Absent List <span>&rarr;</span>
         </div>
         <div className="mt-4 flex items-center text-sm font-bold text-red-600 gap-1 group-hover:translate-x-1 transition-transform">
           View Absent List <span>&rarr;</span>
@@ -237,11 +283,21 @@ const OvernightLogTab = () => {
       <div className="bg-blue-50 p-6 rounded-2xl border border-blue-100 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-32 h-32 bg-blue-100 rounded-bl-full opacity-50 -z-10"></div>
         <div className="flex justify-between items-start z-10">
+      {/* Total Students Card */}
+      <div className="bg-blue-50 p-6 rounded-2xl border border-blue-100 relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-32 h-32 bg-blue-100 rounded-bl-full opacity-50 -z-10"></div>
+        <div className="flex justify-between items-start z-10">
           <div>
+            <p className="text-sm font-bold text-blue-400 uppercase tracking-wider mb-1">Total Residents</p>
+            <h3 className="text-4xl font-black text-blue-700">{stats.total_students}</h3>
             <p className="text-sm font-bold text-blue-400 uppercase tracking-wider mb-1">Total Residents</p>
             <h3 className="text-4xl font-black text-blue-700">{stats.total_students}</h3>
           </div>
           <div className="p-3 bg-blue-200/50 rounded-xl text-blue-600"><Users size={24}/></div>
+          <div className="p-3 bg-blue-200/50 rounded-xl text-blue-600"><Users size={24}/></div>
+        </div>
+        <div className="mt-4 flex items-center text-sm font-bold text-blue-500 gap-1">
+          On Registry
         </div>
         <div className="mt-4 flex items-center text-sm font-bold text-blue-500 gap-1">
           On Registry
@@ -315,13 +371,81 @@ const OvernightLogTab = () => {
       </div>
 
       {/* Table Content */}
+    {/* --- RECENT LOGS TABLE --- */}
+    <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+      
+      {/* Table Toolbar */}
+      <div className="p-5 border-b border-gray-100 flex flex-col sm:flex-row justify-between items-center gap-4 bg-gray-50/50">
+        <h3 className="font-bold text-gray-800 flex items-center gap-2">
+          Recent Gate Activity
+        </h3>
+        
+        <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+          
+          {/* Search Input */}
+          <div className="relative w-full sm:w-56">
+              <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+              <input 
+                  type="text" 
+                  placeholder="Search log..." 
+                  value={gateSearch}
+                  onChange={(e) => setGateSearch(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2 bg-white border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 transition shadow-sm"
+              />
+          </div>
+
+          {/*Date Picker*/}
+          <div className={`flex items-center w-full sm:w-auto pr-2 border rounded-lg transition shadow-sm ${
+            gateDate ? 'border-blue-400 bg-blue-50' : 'bg-white border-gray-200'
+          }`}>
+              <input 
+                  type="date" 
+                  value={gateDate}
+                  onChange={(e) => setGateDate(e.target.value)}
+                  className={`flex-1 pl-3 pr-1 py-2 bg-transparent text-sm font-medium outline-none w-full sm:w-40 ${
+                    gateDate ? 'text-blue-700' : 'text-gray-700'
+                  }`}
+                  title="Filter by Date"
+              />
+              
+              {/* Clear Date Button */}
+              {gateDate && (
+                <button 
+                  onClick={() => setGateDate('')}
+                  className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full text-blue-400 hover:text-red-600 hover:bg-red-100 transition-colors text-sm font-bold ml-1"
+                  title="Clear Date Filter"
+                >
+                  ✕
+                </button>
+              )}
+          </div>
+
+          {/* Status Filter */}
+          <div className="relative w-full sm:w-auto">
+              <Filter size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+              <select 
+                  value={gateFilter}
+                  onChange={(e) => setGateFilter(e.target.value)}
+                  className="w-full sm:w-auto pl-9 pr-8 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-700 outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer appearance-none shadow-sm"
+              >
+                  <option value="All">All Statuses</option>
+                  <option value="Checked In">Returned</option>
+                  <option value="Checked Out">Checked-Out</option>
+              </select>
+          </div>
+        </div>
+      </div>
+
+      {/* Table Content */}
       <div className="overflow-x-auto">
         <table className="w-full text-left">
+          <thead className="bg-gray-50 text-sm font-bold text-gray-500 uppercase tracking-wider border-b border-gray-200">
           <thead className="bg-gray-50 text-sm font-bold text-gray-500 uppercase tracking-wider border-b border-gray-200">
             <tr>
               <th className="px-6 py-4">Student</th>
               <th className="px-6 py-4">Status</th>
               <th className="px-6 py-4">Time</th>
+              <th className="px-6 py-4">Destination & Reason</th>
               <th className="px-6 py-4">Destination & Reason</th>
             </tr>
           </thead>
@@ -384,6 +508,7 @@ const OvernightLogTab = () => {
     </div>
 
     {/* --- STUDENTS OUT MODAL --- */}
+    {/* --- STUDENTS OUT MODAL --- */}
     {showOutModal && (
       <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm p-4 animate-fade-in">
         <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl overflow-hidden animate-slide-up flex flex-col max-h-[85vh]">
@@ -432,8 +557,16 @@ const OvernightLogTab = () => {
                     <th className="p-4">Phone No.</th>
                     <th className="p-4">Home Address</th>
                     <th className="p-4 pr-6 text-right">Emergency Action</th>
+                <thead className="bg-white sticky top-0 shadow-sm z-10">
+                  <tr className="border-b border-gray-200 text-sm font-bold text-gray-400 uppercase tracking-wider">
+                    <th className="p-4 pl-6">Student Details</th>
+                    <th className="p-4">Room No.</th>
+                    <th className="p-4">Phone No.</th>
+                    <th className="p-4">Home Address</th>
+                    <th className="p-4 pr-6 text-right">Emergency Action</th>
                   </tr>
                 </thead>
+                <tbody className="divide-y divide-gray-100 bg-white">
                 <tbody className="divide-y divide-gray-100 bg-white">
                   {filteredOutStudents.map((student) => (
                     <tr key={student.uid} className="hover:bg-red-50/30 transition-colors">
@@ -483,6 +616,9 @@ const OvernightLogTab = () => {
   </div>
   );
 };
+  </div>
+  );
+};
 
 const GrievancesTab = () => {
   const [grievances, setGrievances] = useState([]);
@@ -494,6 +630,7 @@ const GrievancesTab = () => {
   const [searchTerm, setSearchTerm] = useState('');
 
   const [evidenceModal, setEvidenceModal] = useState(null);
+  const [isLocked, setIsLocked] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
 
   useEffect(() => {
@@ -522,6 +659,7 @@ const GrievancesTab = () => {
         toast.success(`Status updated to ${newStatus}`);
       }
     } catch (err) {
+      toast.error("Failed to update status");
       toast.error("Failed to update status");
       fetchGrievances(); 
     }
@@ -704,6 +842,9 @@ const GrievancesTab = () => {
       case 'Pending': return 'bg-orange-50 text-orange-700 border-orange-200';
       case 'Assigned': return 'bg-blue-50 text-blue-700 border-blue-200';
       case 'Resolved': return 'bg-green-50 text-green-700 border-green-200';
+      case 'Pending': return 'bg-orange-50 text-orange-700 border-orange-200';
+      case 'Assigned': return 'bg-blue-50 text-blue-700 border-blue-200';
+      case 'Resolved': return 'bg-green-50 text-green-700 border-green-200';
       default: return 'bg-gray-50 text-gray-600';
     }
   };
@@ -716,10 +857,14 @@ const GrievancesTab = () => {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in">
         <div className="relative bg-white rounded-2xl overflow-hidden max-w-4xl w-full shadow-2xl animate-slide-up">
+        <div className="relative bg-white rounded-2xl overflow-hidden max-w-4xl w-full shadow-2xl animate-slide-up">
           <div className="flex justify-between items-center p-4 border-b border-gray-100 bg-gray-50">
             <h3 className="font-bold text-gray-700 flex items-center gap-2"><ImageIcon size={18}/> Evidence Review</h3>
             <button onClick={() => setEvidenceModal(null)} className="p-2 bg-white rounded-full hover:bg-gray-200 transition text-gray-500"><X size={20} /></button>
+            <h3 className="font-bold text-gray-700 flex items-center gap-2"><ImageIcon size={18}/> Evidence Review</h3>
+            <button onClick={() => setEvidenceModal(null)} className="p-2 bg-white rounded-full hover:bg-gray-200 transition text-gray-500"><X size={20} /></button>
           </div>
+          <div className="p-0 bg-black flex justify-center items-center min-h-[400px]">
           <div className="p-0 bg-black flex justify-center items-center min-h-[400px]">
             {isVideo ? (
               <video src={`${SERVER_URL}${evidenceModal}`} controls autoPlay className="max-h-[70vh] w-full" />
@@ -748,13 +893,49 @@ const GrievancesTab = () => {
       
       {/* HEADER */}
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-6 gap-4">
+
+      {isLocked && (
+        <div className="fixed inset-0 z-[40] bg-black/10 backdrop-blur-[2px] cursor-not-allowed" />
+      )}
+      
+      {/* HEADER */}
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-6 gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Grievances</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            {viewMode === 'active' ? 'Manage active campus complaints.' : 'Review resolved complaint history.'}
           <p className="text-sm text-gray-500 mt-1">
             {viewMode === 'active' ? 'Manage active campus complaints.' : 'Review resolved complaint history.'}
           </p>
         </div>
         
+        {/* VIEW TOGGLE */}
+        <div className="bg-gray-100 p-1 rounded-xl flex w-full lg:w-auto">
+          <button 
+            onClick={() => setViewMode('active')}
+            className={`flex-1 lg:flex-none px-6 py-2 rounded-lg text-sm font-bold transition-all ${
+              viewMode === 'active' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            Active Complaints
+          </button>
+          <button 
+            onClick={() => setViewMode('history')}
+            className={`flex-1 lg:flex-none px-6 py-2 rounded-lg text-sm font-bold transition-all ${
+              viewMode === 'history' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            Resolved History
+          </button>
+        </div>
+      </div>
+
+      {/* TOOLBAR */}
+      <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 mb-6 flex flex-col md:flex-row gap-3 items-center justify-between">
+        <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+          {/* Search */}
+          <div className="relative w-full sm:w-64">
+            <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
         {/* VIEW TOGGLE */}
         <div className="bg-gray-100 p-1 rounded-xl flex w-full lg:w-auto">
           <button 
@@ -788,6 +969,7 @@ const GrievancesTab = () => {
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 transition shadow-sm"
+              className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 transition shadow-sm"
             />
           </div>
           
@@ -811,9 +993,12 @@ const GrievancesTab = () => {
           {viewMode === 'active' && (
             <div className="relative w-full sm:w-auto">
               <ListFilter size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+            <div className="relative w-full sm:w-auto">
+              <ListFilter size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
               <select 
                 value={filterStatus}
                 onChange={(e) => setFilterStatus(e.target.value)}
+                className="w-full sm:w-auto pl-9 pr-8 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer appearance-none shadow-sm"
                 className="w-full sm:w-auto pl-9 pr-8 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer appearance-none shadow-sm"
               >
                 <option value="All">All Status</option>
@@ -841,9 +1026,11 @@ const GrievancesTab = () => {
             <button 
               onClick={handleResolveAll}
               className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2 bg-green-600 text-white rounded-lg text-sm font-bold shadow-md hover:bg-green-700 active:scale-95 transition"
+              className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2 bg-green-600 text-white rounded-lg text-sm font-bold shadow-md hover:bg-green-700 active:scale-95 transition"
               title="Resolve all currently visible complaints"
             >
               <CheckCircle size={16} /> 
+              <span>Resolve All ({filteredGrievances.length})</span>
               <span>Resolve All ({filteredGrievances.length})</span>
             </button>
           )}
@@ -855,10 +1042,17 @@ const GrievancesTab = () => {
             >
               <Trash2 size={16} /> Wipe History
             </button>
+            <button 
+              onClick={handleClearHistory}
+              className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2 bg-red-50 text-red-600 border border-red-200 rounded-lg text-sm font-bold hover:bg-red-100 hover:border-red-300 transition active:scale-95"
+            >
+              <Trash2 size={16} /> Wipe History
+            </button>
           )}
         </div>
       </div>
 
+      {/* COMPLAINTS LIST */}
       {/* COMPLAINTS LIST */}
       <div className="space-y-4">
         {filteredGrievances.length === 0 ? (
@@ -868,9 +1062,16 @@ const GrievancesTab = () => {
              </div>
              <p className="text-gray-800 font-bold text-lg">Inbox Zero</p>
              <p className="text-gray-400 font-medium text-sm mt-1">No {viewMode} grievances match your filters.</p>
+          <div className="flex flex-col items-center justify-center py-20 bg-gray-50/50 rounded-2xl border border-gray-200 border-dashed">
+             <div className="bg-white p-4 rounded-full shadow-sm mb-4">
+                <CheckCircle size={32} className="text-green-500" />
+             </div>
+             <p className="text-gray-800 font-bold text-lg">Inbox Zero</p>
+             <p className="text-gray-400 font-medium text-sm mt-1">No {viewMode} grievances match your filters.</p>
           </div>
         ) : (
           filteredGrievances.map((g) => (
+            <div key={g.id} className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm flex flex-col md:flex-row gap-6 hover:shadow-md transition group">
             <div key={g.id} className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm flex flex-col md:flex-row gap-6 hover:shadow-md transition group">
               
               {/* User Info Column */}
@@ -950,10 +1151,15 @@ const GrievancesTab = () => {
                 
                 {/* Timestamps & Evidence */}
                 <div className="flex gap-6 items-end border-t border-gray-100 pt-4 mt-2">
+                {/* Timestamps & Evidence */}
+                <div className="flex gap-6 items-end border-t border-gray-100 pt-4 mt-2">
                   <div>
                     <p className="text-sm uppercase font-bold text-gray-400 mb-1">Logged On</p>
                     <div className="flex items-center gap-1.5 text-gray-700">
+                    <p className="text-sm uppercase font-bold text-gray-400 mb-1">Logged On</p>
+                    <div className="flex items-center gap-1.5 text-gray-700">
                       <Clock size={14} className="text-gray-400"/>
+                      <span className="text-sm font-bold">
                       <span className="text-sm font-bold">
                         {new Date(g.date_logged).toLocaleDateString()}
                       </span>
@@ -964,10 +1170,13 @@ const GrievancesTab = () => {
                     <div>
                       <p className="text-sm uppercase font-bold text-green-600 mb-1">Resolved On</p>
                       <div className="flex items-center gap-1.5 text-green-700">
+                      <p className="text-sm uppercase font-bold text-green-600 mb-1">Resolved On</p>
+                      <div className="flex items-center gap-1.5 text-green-700">
                         <CheckCircle size={14} />
                         <span className="text-sm font-bold">
                           {new Date(g.date_resolved).toLocaleDateString()}
                         </span>
+                        <span className="text-sm text-green-600 font-bold ml-1">
                         <span className="text-sm text-green-600 font-bold ml-1">
                           {new Date(g.date_resolved).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                         </span>
@@ -980,10 +1189,14 @@ const GrievancesTab = () => {
                       <button 
                         onClick={() => setEvidenceModal(g.img_url)}
                         className="h-9 px-3 bg-blue-50 hover:bg-blue-600 hover:text-white text-blue-600 rounded-lg border border-blue-200 flex items-center gap-2 transition-all text-sm font-bold shadow-sm"
+                        className="h-9 px-3 bg-blue-50 hover:bg-blue-600 hover:text-white text-blue-600 rounded-lg border border-blue-200 flex items-center gap-2 transition-all text-sm font-bold shadow-sm"
                       >
+                        {g.img_url.endsWith('.mp4') ? <><FileVideo size={16} /> View Video</> : <><ImageIcon size={16} /> View Photo</>}
                         {g.img_url.endsWith('.mp4') ? <><FileVideo size={16} /> View Video</> : <><ImageIcon size={16} /> View Photo</>}
                       </button>
                     ) : (
+                      <div className="h-9 px-3 bg-gray-50 rounded-lg border border-gray-200 flex items-center gap-2 text-gray-400 cursor-not-allowed text-sm font-bold">
+                        <ImageIcon size={16} /> No Evidence
                       <div className="h-9 px-3 bg-gray-50 rounded-lg border border-gray-200 flex items-center gap-2 text-gray-400 cursor-not-allowed text-sm font-bold">
                         <ImageIcon size={16} /> No Evidence
                       </div>
@@ -1154,6 +1367,14 @@ const handleStudentCSVUpload = async (e) => {
         error: 'Failed to update details.',
       }
     ).then(() => {
+    toast.promise(
+      axios.put(`http://localhost:3001/api/warden/students/${editingId}`, editForm),
+      {
+        loading: 'Saving changes...',
+        success: 'Student details updated!',
+        error: 'Failed to update details.',
+      }
+    ).then(() => {
       setStudents(students.map(s => s.uid === editingId ? { ...editForm, checkout_count: s.checkout_count } : s));
       setEditingId(null);
     });
@@ -1191,9 +1412,25 @@ const handleStudentCSVUpload = async (e) => {
     const matchBranch = filterBranch === 'All' ? true : s.branch === filterBranch;
 
     return matchSearch && matchBatch && matchBranch;
+    
+    // 1. Text Search
+    const matchSearch = (
+      (s.full_name || '').toLowerCase().includes(term) ||
+      (s.uid || '').toLowerCase().includes(term) ||
+      (s.room_no || '').toLowerCase().includes(term) ||
+      (s.batch || '').toLowerCase().includes(term) ||
+      (s.branch || '').toLowerCase().includes(term)
+    );
+
+    // 2. Dropdown Filters
+    const matchBatch = filterBatch === 'All' ? true : s.batch === filterBatch;
+    const matchBranch = filterBranch === 'All' ? true : s.branch === filterBranch;
+
+    return matchSearch && matchBatch && matchBranch;
   });
 
   return (
+    <div className="animate-fade-in p-2 sm:p-6">
     <div className="animate-fade-in p-2 sm:p-6">
       
       {/* HEADER & ACTIONS */}
@@ -1202,6 +1439,7 @@ const handleStudentCSVUpload = async (e) => {
         {/* LEFT: Title & Counter */}
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Student Registry</h1>
+          <p className="text-sm text-gray-500 mt-1">Manage {students.length} active residents</p>
           <p className="text-sm text-gray-500 mt-1">Manage {students.length} active residents</p>
         </div>
 
@@ -1314,6 +1552,7 @@ const handleStudentCSVUpload = async (e) => {
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
+            <thead className="bg-gray-50 text-xs font-bold text-gray-500 uppercase tracking-wider border-b border-gray-200">
             <thead className="bg-gray-50 text-xs font-bold text-gray-500 uppercase tracking-wider border-b border-gray-200">
               <tr>
                 <th className="px-6 py-4">Student Profile</th>
@@ -1475,6 +1714,20 @@ const handleStudentCSVUpload = async (e) => {
                           </span>
                        </div>
                     </td>
+                    {/* COL 3: STATS */}
+                    <td className="px-6 py-4">
+                       <div className="flex flex-col gap-1.5">
+                          <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Gate Activity</span>
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold w-fit border ${
+                            s.checkout_count >= 10 
+                              ? 'bg-orange-50 text-orange-700 border-orange-200' 
+                              : 'bg-green-50 text-green-700 border-green-200'
+                          }`}>
+                             <Shield size={14} /> 
+                             {s.checkout_count || 0} {s.checkout_count === 1 ? 'Exit' : 'Exits'}
+                          </span>
+                       </div>
+                    </td>
 
                     {/* COL 4: ACTIONS */}
                     <td className="px-6 py-4 text-right">
@@ -1514,6 +1767,9 @@ const handleStudentCSVUpload = async (e) => {
                       )}
                     </td>
 
+                  </tr>
+                ))
+              )}
                   </tr>
                 ))
               )}
@@ -1675,6 +1931,7 @@ const handleStudentCSVUpload = async (e) => {
     </div>
   );
 };
+
 
 const DashboardHome = ({setActiveTab}) => {
   const [stats, setStats] = useState({
@@ -1842,6 +2099,8 @@ const MenuTab = () =>{
   });
   const [uploading, setUploading] = useState(false);
 
+  const [uploading, setUploading] = useState(false);
+
   
   // Add a new state for the Time Editor Modal
   const [timeEditModal, setTimeEditModal] = useState(null); // Will hold { meal: 'Breakfast', start: '07:30', end: '09:30' }
@@ -1862,6 +2121,7 @@ const MenuTab = () =>{
 
   const [aiLoading, setAiLoading] = useState(false);
   const [aiPrompt, setAiPrompt] = useState('');
+  const abortControllerRef = useRef(null);
   const abortControllerRef = useRef(null);
 
   // --- FORM STATES ---
@@ -2332,7 +2592,10 @@ const MenuTab = () =>{
   };
 
   const ask_ai = async () => {
+  const ask_ai = async () => {
     setAiLoading(true);
+    abortControllerRef.current = new AbortController();
+
     abortControllerRef.current = new AbortController();
 
     try {
@@ -2616,6 +2879,15 @@ const MenuTab = () =>{
                                 
                                 <div className="flex items-center gap-2 mt-1">
                                   <span className="text-xs opacity-75">{dish.diet_type}</span>
+                                  {/* THE DYNAMIC STATUS BADGE */}
+                                  <span className={`text-[10px] px-1.5 py-0.5 rounded uppercase tracking-wider font-bold ${
+                                    dish.is_new_recipe_badge ? 'bg-fuchsia-100 text-fuchsia-700 border border-fuchsia-200' :
+                                    dish.status === 'AI Draft' ? 'bg-purple-100 text-purple-700 border border-purple-200' :
+                                    dish.status === 'Draft' ? 'bg-orange-100 text-orange-700 border border-orange-200' : 
+                                    dish.status === 'Approved' ? 'bg-blue-100 text-blue-700' : 
+                                    'bg-yellow-200 text-yellow-800'
+                                  }`}>
+                                    {dish.is_new_recipe_badge ? '✨ NEW RECIPE' : dish.status === 'AI Draft' ? '🤖 AI Draft' : dish.status}
                                   {/* THE DYNAMIC STATUS BADGE */}
                                   <span className={`text-[10px] px-1.5 py-0.5 rounded uppercase tracking-wider font-bold ${
                                     dish.is_new_recipe_badge ? 'bg-fuchsia-100 text-fuchsia-700 border border-fuchsia-200' :
@@ -3059,6 +3331,13 @@ const MenuTab = () =>{
                     setShowAIModal(false); // Hide the UI
                     setAiLoading(false);   // Reset the loading spinner
                   }}
+                  onClick={() => {
+                    if (abortControllerRef.current) {
+                      abortControllerRef.current.abort(); // 🛑 Kill the network request!
+                    }
+                    setShowAIModal(false); // Hide the UI
+                    setAiLoading(false);   // Reset the loading spinner
+                  }}
                   className="flex-1 bg-white border-2 border-gray-200 text-gray-600 font-bold py-3 rounded-xl hover:bg-gray-50 transition"
                 >
                   Cancel
@@ -3157,6 +3436,55 @@ const MenuTab = () =>{
           </div>
         </div>
       )}
+
+      {/* --- WEEKLY OPERATIONS SUMMARY --- */}
+      <div className="mt-8 bg-white p-6 rounded-2xl border border-gray-200 shadow-sm flex flex-col md:flex-row items-center justify-between gap-6 animate-fade-in">
+        
+        <div>
+          <h3 className="font-bold text-gray-800 text-lg">Weekly Operations Brief</h3>
+          <p className="text-xs text-gray-500 mt-1">Estimated metrics per student for the selected week.</p>
+        </div>
+
+        <div className="flex flex-wrap gap-4">
+          {/* Budget Metric */}
+          <div className="bg-green-50 px-4 py-3 rounded-xl border border-green-100 flex items-center gap-4 min-w-[160px]">
+             <div className="bg-green-200 text-green-700 p-2 rounded-lg font-black text-xl">₹</div>
+             <div>
+               <p className="text-[10px] uppercase font-bold text-green-600 tracking-wider">Total Cost</p>
+               <p className="font-black text-green-900 text-lg">₹{weeklyMetrics.totalCost}</p>
+             </div>
+          </div>
+          
+          {/* Avg. Budget Metric */}
+          <div className="bg-blue-50 px-4 py-3 rounded-xl border border-blue-100 flex items-center gap-3 flex-1 min-w-[140px]">
+             <div className="bg-blue-200 text-blue-700 p-2 rounded-lg font-black text-lg">⚖</div>
+             <div>
+               <p className="text-[10px] uppercase font-bold text-blue-600 tracking-wider">Avg Cost/Meal</p>
+               <p className="font-black text-blue-900 text-lg">₹{weeklyMetrics.avgCost}</p>
+             </div>
+          </div>
+
+          {/* Effort Metric */}
+          <div className="bg-orange-50 px-4 py-3 rounded-xl border border-orange-100 flex items-center gap-4 min-w-[160px]">
+             <div className="bg-orange-200 text-orange-700 p-2 rounded-lg font-black text-xl">♨</div>
+             <div>
+               <p className="text-[10px] uppercase font-bold text-orange-600 tracking-wider">Avg Labor Effort</p>
+               <p className="font-black text-orange-900 text-lg">{weeklyMetrics.avgEffort} / 10</p>
+             </div>
+          </div>
+
+          {/* Warning Metric */}
+          <div className="bg-red-50 px-4 py-3 rounded-xl border border-red-100 flex items-center gap-4 min-w-[160px]">
+             <div className="bg-red-200 text-red-700 p-2 rounded-lg font-black text-xl">⚠</div>
+             <div>
+               <p className="text-[10px] uppercase font-bold text-red-600 tracking-wider">Hardest Shift</p>
+               <p className="font-black text-red-900 text-lg">{weeklyMetrics.highestEffortDay}</p>
+             </div>
+          </div>
+        </div>
+        
+      </div>
+
 
       {/* --- WEEKLY OPERATIONS SUMMARY --- */}
       <div className="mt-8 bg-white p-6 rounded-2xl border border-gray-200 shadow-sm flex flex-col md:flex-row items-center justify-between gap-6 animate-fade-in">
@@ -3363,7 +3691,7 @@ const MessReviewsTab = () => {
     fetchDashboardData();
   }, []);
 
-  const fetchDashboardData = async () => {
+const fetchDashboardData = async () => {
     try {
       const [revRes, catRes] = await Promise.all([
         axios.get('http://localhost:3001/api/admin/mess-reviews'),
@@ -3605,6 +3933,7 @@ const MessReviewsTab = () => {
               ))}
             </div>
             
+            
           </div>
 
           {/* COL 2: Top Complained */}
@@ -3749,6 +4078,7 @@ function WardenDashboard() {
     { id: 'home', label: 'Home', icon: <Home size={20} /> },
     { id: 'mess', label: 'Mess Reviews', icon: <ClipboardList size={20} /> },
     { id: 'menu', label: 'Menu Management', icon: <Utensils size={20} /> },
+    { id: 'overnight', label: 'Overnight Logs', icon: <Moon size={20} /> },
     { id: 'overnight', label: 'Overnight Logs', icon: <Moon size={20} /> },
     { id: 'grievances', label: 'Grievances', icon: <AlertCircle size={20} /> },
     { id: 'students', label: 'Student Management', icon: <Users size={20} /> },

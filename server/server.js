@@ -2,8 +2,11 @@ const express = require('express');
 const mysql = require('mysql2');
 const cors = require('cors');
 const axios = require('axios');
+const axios = require('axios');
 const app = express();
 const multer = require('multer');
+const csv = require('csv-parser');
+const { Readable } = require('stream');
 const csv = require('csv-parser');
 const { Readable } = require('stream');
 const path = require('path');
@@ -51,6 +54,9 @@ cron.schedule('0 2 1 * *', () => {
 // Run every night at 2:00 AM to calculate Bayesian Popularity + Flag Penalties
 cron.schedule('0 2 * * *', async () => {
     console.log("🧮 CRON: Running Nightly Math Engine (Bayesian + Penalties)...");
+// Run every night at 2:00 AM to calculate Bayesian Popularity + Flag Penalties
+cron.schedule('0 2 * * *', async () => {
+    console.log("🧮 CRON: Running Nightly Math Engine (Bayesian + Penalties)...");
 
     try {
         const fetchReviewsSql = `
@@ -67,6 +73,49 @@ cron.schedule('0 2 * * *', async () => {
                 AND (mc.diet_type = mr.diet_type OR mc.diet_type = 'Common')
             GROUP BY mc.id
         `;
+    try {
+        const fetchReviewsSql = `
+            SELECT 
+                mc.id AS dish_id,
+                mc.dish_name,
+                COUNT(mr.id) AS real_votes,
+                COALESCE(AVG(mr.rating), 0) AS real_avg
+            FROM menu_catalog mc
+            LEFT JOIN daily_menu dm ON mc.id = dm.dish_id
+            LEFT JOIN mess_reviews mr 
+                ON dm.serve_date = mr.serve_date 
+                AND dm.meal_type = mr.meal_type
+                AND (mc.diet_type = mr.diet_type OR mc.diet_type = 'Common')
+            GROUP BY mc.id
+        `;
+
+        const fetchIssuesSql = `SELECT dish_issues FROM mess_reviews WHERE dish_issues IS NOT NULL AND dish_issues != '{}'`;
+
+        const [dishes] = await db.promise().query(fetchReviewsSql);
+        const [issues] = await db.promise().query(fetchIssuesSql);
+
+        if (dishes.length === 0) return console.log("🧮 CRON: No dishes to update.");
+
+        const flagDictionary = {};
+        issues.forEach(row => {
+            try {
+                const parsed = typeof row.dish_issues === 'string' ? JSON.parse(row.dish_issues) : row.dish_issues;
+                Object.entries(parsed).forEach(([dishName, tags]) => {
+                    if (!flagDictionary[dishName]) flagDictionary[dishName] = 0;
+                    flagDictionary[dishName] += tags.length; 
+                });
+            } catch (e) {}
+        });
+
+        const splitDishName = (name) => {
+            if (!name) return [];
+            return name.split(/ \+ | & | and |, /i).map(s => s.trim()).filter(Boolean);
+        };
+
+        const C = 10;   
+        const m = 3.5;  
+        const PENALTY_PER_FLAG = 0.15; 
+        let completedUpdates = 0; 
 
         const fetchIssuesSql = `SELECT dish_issues FROM mess_reviews WHERE dish_issues IS NOT NULL AND dish_issues != '{}'`;
 
@@ -117,6 +166,22 @@ cron.schedule('0 2 * * *', async () => {
 
             const finalScore = score.toFixed(2);
 
+            let score = (realSum + dummySum) / totalVotes;
+
+            const subItems = splitDishName(dish.dish_name);
+            let totalFlagsForDish = 0;
+            subItems.forEach(subItem => {
+                if (flagDictionary[subItem]) totalFlagsForDish += flagDictionary[subItem];
+            });
+
+            const totalPenalty = totalFlagsForDish * PENALTY_PER_FLAG;
+            score = score - totalPenalty;
+
+            if (score < 1.0) score = 1.0;
+            if (score > 5.0) score = 5.0;
+
+            const finalScore = score.toFixed(2);
+
             const updateSql = `UPDATE menu_catalog SET popularity_score = ? WHERE id = ?`;
             db.query(updateSql, [finalScore, dish.dish_id], (updateErr) => {
                 if (updateErr) console.error(`❌ CRON: Failed to update dish ${dish.dish_id}`);
@@ -125,8 +190,18 @@ cron.schedule('0 2 * * *', async () => {
                 if (completedUpdates === dishes.length) {
                     console.log("✅ CRON: All dishes updated with Penalty-Adjusted scores!");
                 }
+                if (updateErr) console.error(`❌ CRON: Failed to update dish ${dish.dish_id}`);
+                
+                completedUpdates++;
+                if (completedUpdates === dishes.length) {
+                    console.log("✅ CRON: All dishes updated with Penalty-Adjusted scores!");
+                }
             });
         });
+
+    } catch (err) {
+        console.error("❌ CRON Math Engine Error:", err);
+    }
 
     } catch (err) {
         console.error("❌ CRON Math Engine Error:", err);
@@ -151,6 +226,8 @@ const storage = multer.diskStorage({
     }
 });
 const upload = multer({ storage: storage });
+const uploadCsv = multer({ storage: multer.memoryStorage() });
+
 const uploadCsv = multer({ storage: multer.memoryStorage() });
 
 // 3. Serve the Uploads folder statically (Crucial for viewing images!)
@@ -198,8 +275,10 @@ app.get('/api/kiosk/update-code', (req, res) => {
     res.json({ success: true, code: currentKioskCode });
 });
 
+
 app.get('/api/kiosk/live-display', async (req, res) => {
     try {
+        // 1. Overall live stats for the entire day (Summary)
         // 1. Overall live stats for the entire day (Summary)
         const statsSql = `
             SELECT 
@@ -209,6 +288,7 @@ app.get('/api/kiosk/live-display', async (req, res) => {
             WHERE serve_date = CURDATE()
         `;
 
+        // 2. Today's Menu sorted by Bayesian Popularity Score
         // 2. Today's Menu sorted by Bayesian Popularity Score
         const menuSql = `
             SELECT 
@@ -335,6 +415,7 @@ app.get('/api/kiosk/live-display', async (req, res) => {
         }
 
         // Assemble the ultimate JSON payload for the Kiosk Team
+        // Assemble the ultimate JSON payload for the Kiosk Team
         res.json({
             timestamp: istTime.toISOString(),
             active_meal: activeMeal, // Strictly controlled by rollover logic
@@ -342,6 +423,12 @@ app.get('/api/kiosk/live-display', async (req, res) => {
                 total_votes: statsResult[0].total_votes_today,
                 average_rating: Number(statsResult[0].average_rating_today).toFixed(1)
             },
+            today_menu: todayMenu,
+            hall_of_fame: {
+                Breakfast: hofBreakfast,
+                Lunch: hofLunch,
+                Dinner: hofDinner
+            }
             today_menu: todayMenu,
             hall_of_fame: {
                 Breakfast: hofBreakfast,
@@ -563,6 +650,7 @@ app.get('/api/warden/overnightlog', async (req, res) => {
                 JOIN users ON gate_logs.uid = users.uid 
                 ORDER BY exit_time DESC 
                 LIMIT 200
+                LIMIT 200
             `)
         ]);
 
@@ -644,6 +732,7 @@ app.post('/api/warden/checkinOverride', (req, res) => {
 //-----GRIEVANCE ROUTES-----
 
 app.get('/api/warden/grievances', (req, res) => {
+    // ✨ Added u.room_no to the SELECT statement
     const sql = `
       SELECT 
         g.*, 
@@ -735,7 +824,11 @@ app.get('/api/warden/students', (req, res) => {
             u.dob, 
             u.batch,  -- ✨ NEW
             u.branch, -- ✨ NEW
+            u.dob, 
+            u.batch,  -- ✨ NEW
+            u.branch, -- ✨ NEW
             (SELECT COUNT(*) FROM gate_logs WHERE uid = u.uid AND status = 'out') as checkout_count
+        FROM users u WHERE u.role = 'student'
         FROM users u WHERE u.role = 'student'
         ORDER BY u.room_no ASC;
     `;
@@ -751,10 +844,15 @@ app.put('/api/warden/students/:uid', (req, res) => {
     const { uid } = req.params;
     // ✨ Extract batch and branch from the incoming request body
     const { full_name, room_no, phone_no, address, dob, batch, branch } = req.body; 
+    // ✨ Extract batch and branch from the incoming request body
+    const { full_name, room_no, phone_no, address, dob, batch, branch } = req.body; 
     
     // ✨ Added batch=? and branch=? to the SET clause
     const sql = "UPDATE users SET full_name=?, room_no=?, phone_no=?, address=?, dob=?, batch=?, branch=? WHERE uid=?";
+    // ✨ Added batch=? and branch=? to the SET clause
+    const sql = "UPDATE users SET full_name=?, room_no=?, phone_no=?, address=?, dob=?, batch=?, branch=? WHERE uid=?";
     
+    db.query(sql, [full_name, room_no, phone_no, address, dob, batch, branch, uid], (err, result) => {
     db.query(sql, [full_name, room_no, phone_no, address, dob, batch, branch, uid], (err, result) => {
         if (err) return res.status(500).json(err);
         res.json({ success: true });
@@ -1212,6 +1310,9 @@ app.get('/api/admin/weekly-menu', (req, res) => {
             m.diet_type,
             m.cost,
             m.effort_score 
+            m.diet_type,
+            m.cost,
+            m.effort_score 
         FROM daily_menu d
         JOIN menu_catalog m ON d.dish_id = m.id
         WHERE d.serve_date BETWEEN ? AND ?
@@ -1557,7 +1658,29 @@ app.get('/api/admin/force-popularity-sync', async (req, res) => {
                 AND (mc.diet_type = mr.diet_type OR mc.diet_type = 'Common')
             GROUP BY mc.id
         `;
+    try {
+        // 1. Get base stats AND the dish name so we can match it to the JSON
+        const fetchReviewsSql = `
+            SELECT 
+                mc.id AS dish_id,
+                mc.dish_name,
+                COUNT(mr.id) AS real_votes,
+                COALESCE(AVG(mr.rating), 0) AS real_avg
+            FROM menu_catalog mc
+            LEFT JOIN daily_menu dm ON mc.id = dm.dish_id
+            LEFT JOIN mess_reviews mr 
+                ON dm.serve_date = mr.serve_date 
+                AND dm.meal_type = mr.meal_type
+                AND (mc.diet_type = mr.diet_type OR mc.diet_type = 'Common')
+            GROUP BY mc.id
+        `;
 
+        // 2. Fetch all raw JSON issues across the entire database
+        const fetchIssuesSql = `SELECT dish_issues FROM mess_reviews WHERE dish_issues IS NOT NULL AND dish_issues != '{}'`;
+
+        // Run both fetches
+        const [dishes] = await db.promise().query(fetchReviewsSql);
+        const [issues] = await db.promise().query(fetchIssuesSql);
         // 2. Fetch all raw JSON issues across the entire database
         const fetchIssuesSql = `SELECT dish_issues FROM mess_reviews WHERE dish_issues IS NOT NULL AND dish_issues != '{}'`;
 
@@ -1590,11 +1713,34 @@ app.get('/api/admin/force-popularity-sync', async (req, res) => {
         };
 
         // --- THE CONSTANTS ---
+        // 3. Build a "Flag Dictionary" 
+        // Example output: { "Idli": 12, "Chicken Curry": 4 }
+        const flagDictionary = {};
+        issues.forEach(row => {
+            try {
+                const parsed = typeof row.dish_issues === 'string' ? JSON.parse(row.dish_issues) : row.dish_issues;
+                Object.entries(parsed).forEach(([dishName, tags]) => {
+                    if (!flagDictionary[dishName]) flagDictionary[dishName] = 0;
+                    // Add the number of tags (e.g., "Cold" and "Bland" = 2 penalties)
+                    flagDictionary[dishName] += tags.length; 
+                });
+            } catch (e) { /* Ignore malformed JSON */ }
+        });
+
+        // Helper: Split combo dish names exactly like your frontend does!
+        const splitDishName = (name) => {
+            if (!name) return [];
+            return name.split(/ \+ | & | and |, /i).map(s => s.trim()).filter(Boolean);
+        };
+
+        // --- THE CONSTANTS ---
         const C = 10;   // Dummy votes
         const m = 3.5;  // Baseline score
         const PENALTY_PER_FLAG = 0.15; // How much a single tag drops the score
+        const PENALTY_PER_FLAG = 0.15; // How much a single tag drops the score
         let completedUpdates = 0; 
 
+        // 4. Calculate and Update each dish
         // 4. Calculate and Update each dish
         dishes.forEach(dish => {
             const realSum = dish.real_votes * dish.real_avg;
@@ -1622,7 +1768,29 @@ app.get('/api/admin/force-popularity-sync', async (req, res) => {
             if (score > 5.0) score = 5.0;
 
             const finalScore = score.toFixed(2);
+            // Step A: Base Bayesian Score
+            let score = (realSum + dummySum) / totalVotes;
 
+            // Step B: Calculate Total Flags for this specific dish (handling combos)
+            const subItems = splitDishName(dish.dish_name);
+            let totalFlagsForDish = 0;
+            subItems.forEach(subItem => {
+                if (flagDictionary[subItem]) {
+                    totalFlagsForDish += flagDictionary[subItem];
+                }
+            });
+
+            // Step C: Apply the Penalty
+            const totalPenalty = totalFlagsForDish * PENALTY_PER_FLAG;
+            score = score - totalPenalty;
+
+            // Step D: Clamp the score so it stays between 1.0 and 5.0
+            if (score < 1.0) score = 1.0;
+            if (score > 5.0) score = 5.0;
+
+            const finalScore = score.toFixed(2);
+
+            // 5. Save it back to the catalog
             // 5. Save it back to the catalog
             const updateSql = `UPDATE menu_catalog SET popularity_score = ? WHERE id = ?`;
             db.query(updateSql, [finalScore, dish.dish_id], (updateErr) => {
@@ -1631,13 +1799,20 @@ app.get('/api/admin/force-popularity-sync', async (req, res) => {
                 completedUpdates++;
                 if (completedUpdates === dishes.length) {
                     console.log("✅ All dishes updated with Penalty-Adjusted Bayesian scores!");
+                    console.log("✅ All dishes updated with Penalty-Adjusted Bayesian scores!");
                     res.json({ 
                         success: true, 
+                        message: `Math Complete! Updated ${dishes.length} dishes with Flag Penalties applied. Check the Warden Dashboard!` 
                         message: `Math Complete! Updated ${dishes.length} dishes with Flag Penalties applied. Check the Warden Dashboard!` 
                     });
                 }
             });
         });
+
+    } catch (err) {
+        console.error("❌ Math Engine Error:", err);
+        res.status(500).json({ error: "Failed to calculate penalties", mysql_error: err.message });
+    }
 
     } catch (err) {
         console.error("❌ Math Engine Error:", err);
