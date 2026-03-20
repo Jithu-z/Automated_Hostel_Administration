@@ -171,7 +171,7 @@ db.connect(err => {
     else console.log('Connected to MySQL');
 });
 const { GoogleGenerativeAI } = require("@google/generative-ai");
-const genAI = new GoogleGenerativeAI("AIzaSyAZRbNtGb9KDTCXH3DvXQ3emnEjRxIPrHk");
+const genAI = new GoogleGenerativeAI("PASTE GEMINI API KEY HERE");
 
 
 // ==========================================
@@ -185,24 +185,9 @@ const HOSTEL_CONFIG = {
     ]
 };
 
-
 // ==========================================
-// STUDENT APP APIs
+// KIOSK APIs
 // ==========================================
-
-app.post('/api/auth/login', (req, res) => {
-    const { uid, password } = req.body;
-    const sql = 'SELECT * FROM users WHERE uid = ? AND DATE_FORMAT(dob, "%d%m%Y") = ?';
-    db.query(sql, [uid, password], (err, result) => {
-        if (err) return res.status(500).json(err);
-        if (result.length > 0) {
-            res.json({ success: true, user: result[0] });
-        } else {
-            res.status(401).json({ success: false, message: "Invalid Credentials" });
-        }
-    });
-});
-
 //Rotating qr codes
 let currentKioskCode = "INITIAL-CODE"; 
 
@@ -237,7 +222,7 @@ app.get('/api/kiosk/live-display', async (req, res) => {
             ORDER BY mc.popularity_score DESC
         `;
 
-        // 3. NEW: Live ratings and vote counts grouped by specific meal
+        // 3. Live ratings and vote counts grouped by specific meal
         const mealStatsSql = `
             SELECT 
                 meal_type, 
@@ -259,6 +244,9 @@ app.get('/api/kiosk/live-display', async (req, res) => {
             LIMIT 3
         `;
 
+        // 5. Fetch Meal Timings from the database
+        const timingsSql = `SELECT meal_type, start_time, end_time FROM meal_timings`;
+
         // Run EVERYTHING in parallel for maximum speed
         const [
             [statsResult], 
@@ -266,14 +254,16 @@ app.get('/api/kiosk/live-display', async (req, res) => {
             [mealStatsResult],
             [hofBreakfast], 
             [hofLunch], 
-            [hofDinner]
+            [hofDinner],
+            [timingsResult]
         ] = await Promise.all([
             db.promise().query(statsSql),
             db.promise().query(menuSql),
             db.promise().query(mealStatsSql),
             db.promise().query(hofSql, ['Breakfast']),
             db.promise().query(hofSql, ['Lunch']),
-            db.promise().query(hofSql, ['Dinner'])
+            db.promise().query(hofSql, ['Dinner']),
+            db.promise().query(timingsSql) 
         ]);
 
         // Helper function to extract the live stats for a specific meal type
@@ -285,32 +275,69 @@ app.get('/api/kiosk/live-display', async (req, res) => {
             };
         };
 
-        // Group today's menu AND attach their live rating & vote count!
+        // Helper function to extract timings
+        const getTimings = (mealType) => {
+            const timing = timingsResult.find(t => t.meal_type === mealType);
+            return timing ? { start_time: timing.start_time, end_time: timing.end_time } : null;
+        };
+
+        // Group today's menu AND attach their live rating, vote count, and timings!
         const todayMenu = {
             Breakfast: {
+                timings: getTimings('Breakfast'),
                 ...getMealStats('Breakfast'),
                 items: menuResult.filter(m => m.meal_type === 'Breakfast')
             },
             Lunch: {
+                timings: getTimings('Lunch'),
                 ...getMealStats('Lunch'),
                 items: menuResult.filter(m => m.meal_type === 'Lunch')
             },
             Dinner: {
+                timings: getTimings('Dinner'),
                 ...getMealStats('Dinner'),
                 items: menuResult.filter(m => m.meal_type === 'Dinner')
             }
         };
 
-        // Determine active meal based on the current hour (24hr format)
-        const currentHour = new Date().getHours();
-        let activeMeal = 'Breakfast';
-        if (currentHour >= 11 && currentHour < 16) activeMeal = 'Lunch';
-        if (currentHour >= 16) activeMeal = 'Dinner';
+        // ✨ UPGRADED: CONTINUOUS ROLLOVER LOGIC (Based on Start Times)
+        const timeToMinutes = (timeStr) => {
+            if (!timeStr) return 0;
+            const parts = timeStr.toString().split(':');
+            return parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
+        };
+
+        // 🚨 IMPORTANT: Forces the server to calculate using Indian Standard Time (IST)
+        const now = new Date();
+        const istTime = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+        const currentMinutes = istTime.getHours() * 60 + istTime.getMinutes();
+        
+        // Extract start times (fallback to standard times if DB is missing values)
+        const bfastStart = timeToMinutes(todayMenu.Breakfast.timings?.start_time || '07:00:00');
+        const lunchStart = timeToMinutes(todayMenu.Lunch.timings?.start_time || '12:00:00');
+        const dinnerStart = timeToMinutes(todayMenu.Dinner.timings?.start_time || '19:00:00');
+
+        let activeMeal = 'Dinner'; 
+
+        // Logic exactly as requested:
+        if (currentMinutes >= dinnerStart) {
+            // From dinner start time until midnight -> Dinner
+            activeMeal = 'Dinner';     
+        } else if (currentMinutes >= lunchStart) {
+            // From lunch start time until dinner starts -> Lunch
+            activeMeal = 'Lunch';      
+        } else if (currentMinutes >= bfastStart) {
+            // From breakfast start time until lunch starts -> Breakfast
+            activeMeal = 'Breakfast';  
+        } else {
+            // From midnight until breakfast starts -> Dinner (from the night before)
+            activeMeal = 'Dinner';     
+        }
 
         // Assemble the ultimate JSON payload for the Kiosk Team
         res.json({
-            timestamp: new Date().toISOString(),
-            active_meal: activeMeal,
+            timestamp: istTime.toISOString(),
+            active_meal: activeMeal, // Strictly controlled by rollover logic
             overall_daily_stats: {
                 total_votes: statsResult[0].total_votes_today,
                 average_rating: Number(statsResult[0].average_rating_today).toFixed(1)
@@ -329,8 +356,26 @@ app.get('/api/kiosk/live-display', async (req, res) => {
     }
 });
 
-// Student Gate pass routes
 
+// ==========================================
+// STUDENT APP APIs
+// ==========================================
+
+app.post('/api/auth/login', (req, res) => {
+    const { uid, password } = req.body;
+    const sql = 'SELECT * FROM users WHERE uid = ? AND DATE_FORMAT(dob, "%d%m%Y") = ?';
+    db.query(sql, [uid, password], (err, result) => {
+        if (err) return res.status(500).json(err);
+        if (result.length > 0) {
+            res.json({ success: true, user: result[0] });
+        } else {
+            res.status(401).json({ success: false, message: "Invalid Credentials" });
+        }
+    });
+});
+
+
+// -----Student Gate pass routes-----
 app.get('/api/gate/status/:id', (req, res) => {
     const userId = req.params.id;
     const sql = 'SELECT is_present FROM users WHERE uid = ?';
@@ -401,15 +446,18 @@ app.get('/api/student/logs/:uid', (req, res) => {
 });
 
 
-// student grievances api's
+// -----student grievances api's-----
 
-app.post('/api/student/grievances',upload.single('evidence'), (req, res) => {
-    // Note: room_no comes from frontend (TO BE CHANGED LATER)
+app.post('/api/student/grievances', upload.single('evidence'), (req, res) => {
     const { uid, room_no, category, description } = req.body;
     const img_url = req.file ? `/uploads/${req.file.filename}` : null;
-    const sql = "INSERT INTO grievances (uid, room_no, category, description, img_url) VALUES (?, ?, ?, ?, ?)";
+    const sql = "INSERT INTO grievances (uid, issue_location, category, description, img_url) VALUES (?, ?, ?, ?, ?)";
+    
     db.query(sql, [uid, room_no, category, description, img_url], (err, result) => {
-        if (err) return res.status(500).json(err);
+        if (err) {
+            console.error("❌ Grievance Insert Error:", err.message); 
+            return res.status(500).json(err);
+        }
         res.json({ success: true, message: "Grievance submitted" });
     });
 });
@@ -428,7 +476,7 @@ app.put('/api/student/grievances/acknowledge/:id', (req, res) => {
     });
 });
 
-//student mess review api's
+//----student mess review api's-----
 // GET: Fetch today's menu for a specific meal AND diet type
 app.get('/api/student/mess/today', (req, res) => {
     const mealType = req.query.meal; // 'Breakfast', 'Lunch', or 'Dinner'
@@ -502,7 +550,7 @@ app.get('/api/student/mess/reviewed-today', (req, res) => {
 // ==========================================
 
 
-//Overnight stay Routes
+//-----Overnight stay Routes-----
 app.get('/api/warden/overnightlog', async (req, res) => {
     try {
         // Run all three queries in parallel
@@ -593,12 +641,17 @@ app.post('/api/warden/checkinOverride', (req, res) => {
     });
 });
 
-//GRIEVANCE ROUTES
+//-----GRIEVANCE ROUTES-----
 
 app.get('/api/warden/grievances', (req, res) => {
-    // ✨ Added u.room_no to the SELECT statement
     const sql = `
-      SELECT g.*, u.full_name, u.room_no, u.branch, u.batch, u.phone_no
+      SELECT 
+        g.*, 
+        u.full_name, 
+        u.room_no AS student_room, 
+        u.branch, 
+        u.batch, 
+        u.phone_no
       FROM grievances g 
       JOIN users u ON g.uid = u.uid 
       ORDER BY g.date_logged DESC
@@ -668,9 +721,9 @@ app.delete('/api/warden/grievances/:id', (req, res) => {
 
 
 
-// STUDENT MANAGEMENT ROUTES
+//----- STUDENT MANAGEMENT ROUTES-----
 
-// --- 1. GET ALL STUDENTS (Now includes Batch & Branch) ---
+// 1. GET ALL STUDENTS (Now includes Batch & Branch) 
 app.get('/api/warden/students', (req, res) => {
     const sql = `
         SELECT 
@@ -693,7 +746,7 @@ app.get('/api/warden/students', (req, res) => {
     });
 });
 
-// --- 2. UPDATE SINGLE STUDENT ---
+//2. UPDATE SINGLE STUDENT 
 app.put('/api/warden/students/:uid', (req, res) => {
     const { uid } = req.params;
     // ✨ Extract batch and branch from the incoming request body
@@ -708,7 +761,7 @@ app.put('/api/warden/students/:uid', (req, res) => {
     });
 });
 
-// --- 3. BULK UPLOAD STUDENTS (CSV) ---
+// 3. BULK UPLOAD STUDENTS (CSV) 
 app.post('/api/warden/students/bulk-upload', uploadCsv.single('file'), (req, res) => {
     if (!req.file) return res.status(400).json({ error: "No file uploaded." });
 
@@ -722,122 +775,111 @@ app.post('/api/warden/students/bulk-upload', uploadCsv.single('file'), (req, res
         .on('data', (data) => results.push(data))
         .on('end', async () => {
             let addedCount = 0;
-            let skippedCount = 0;
-            let invalidCount = 0;
+            let skippedCount = 0; 
 
             try {
+                // ✨ Start transaction directly on your db instance!
+                await db.promise().beginTransaction();
+
+                let rowNumber = 2; 
+
                 for (let row of results) {
-                    // 1. Check for missing core data
-                    if (!row.uid || !row.full_name || !row.dob) {
-                        invalidCount++;
-                        continue; 
+                    
+                    if (!row.uid || row.uid.trim() === '') {
+                        throw new Error(`CRITICAL: Row ${rowNumber} is completely missing a UID.`);
                     }
 
-                    // 2. STRICT UID BOUNCER
+                    if (!row.full_name || !row.dob) {
+                        throw new Error(`Row ${rowNumber} (${row.uid}) is missing a Name or DOB.`);
+                    }
+
                     const uidRegex = /^[uU]\d{7}$/;
                     if (!uidRegex.test(row.uid)) {
-                        console.log(`Rejected row due to invalid UID format: ${row.uid}`);
-                        invalidCount++;
-                        continue;
+                        throw new Error(`Row ${rowNumber}: Invalid UID format "${row.uid}". Must be U followed by 7 digits.`);
                     }
 
-                    // 3. STRICT BATCH BOUNCER
                     if (row.batch) {
                         const batchRegex = /^\d{4}-\d{2}$/;
                         if (!batchRegex.test(row.batch)) {
-                            console.log(`Rejected UID ${row.uid} due to invalid batch format: ${row.batch}`);
-                            invalidCount++;
-                            continue;
+                            throw new Error(`Row ${rowNumber} (${row.uid}): Invalid batch format "${row.batch}". Expected YYYY-YY.`);
                         }
                     }
 
-                    // 4. Phone_no check
+                    const dateRegex = /^(\d{2})[\/\-\.](\d{2})[\/\-\.](\d{4})$/;
+                    const dateMatch = row.dob.match(dateRegex);
+                    if (!dateMatch) {
+                        throw new Error(`Row ${rowNumber} (${row.uid}): Invalid DOB format "${row.dob}". Expected DD-MM-YYYY.`);
+                    }
+
                     if (row.phone_no) {
                         const phoneRegex = /^\d{10}$/;
                         if (!phoneRegex.test(row.phone_no)) {
-                            console.log(`Rejected UID ${row.uid} due to invalid phone: ${row.phone_no}. Expected 10 digits.`);
-                            invalidCount++;
-                            continue;
+                            throw new Error(`Row ${rowNumber} (${row.uid}): Invalid phone number. Must be exactly 10 digits.`);
                         }
                     }
 
-                    // 5. FLEXIBLE DATE BOUNCER (Accepts DD-MM-YYYY, DD/MM/YYYY, or DD.MM.YYYY)
-                    const dateRegex = /^(\d{2})[\/\-\.](\d{2})[\/\-\.](\d{4})$/;
-                    const dateMatch = row.dob.match(dateRegex);
-
-                    if (!dateMatch) {
-                        console.log(`Rejected UID ${row.uid} due to invalid date format: ${row.dob}`);
-                        invalidCount++;
-                        continue;
+                    if (row.room_no && !HOSTEL_CONFIG.roomRegex.test(row.room_no)) {
+                        throw new Error(`Row ${rowNumber} (${row.uid}): Invalid Room format "${row.room_no}".`);
                     }
 
-                    // ✨ STRICT ROOM BOUNCER
-                    if (!HOSTEL_CONFIG.roomRegex.test(row.room_no)) {
-                        console.log(`Rejected UID ${row.uid}: Invalid Room ${row.room_no}`);
-                        invalidCount++;
-                        continue;
+                    const normalizedBranch = row.branch ? row.branch.trim().toUpperCase() : null;
+                    if (normalizedBranch && !HOSTEL_CONFIG.allowedBranches.includes(normalizedBranch)) {
+                        throw new Error(`Row ${rowNumber} (${row.uid}): Unknown Branch "${row.branch}". Check allowed branches.`);
                     }
 
-                    // ✨ STRICT BRANCH BOUNCER
-                    const normalizedBranch = row.branch.trim().toUpperCase();
-                    if (!HOSTEL_CONFIG.allowedBranches.includes(normalizedBranch)) {
-                        console.log(`Rejected UID ${row.uid}: Invalid Branch ${row.branch}`);
-                        invalidCount++;
-                        continue;
-                    }
-
-                    // ... (Proceed to DATABASE INSERT LOGIC, remembering to use normalizedBranch and row.room_no.toUpperCase() in your INSERT array) ...
-
-                    // ✨ The Regex automatically split the date for us!
-                    // dateMatch[1] = Day, dateMatch[2] = Month, dateMatch[3] = Year
                     const mysqlDate = `${dateMatch[3]}-${dateMatch[2]}-${dateMatch[1]}`;
 
-
-                    // 6. DATABASE INSERT LOGIC
+                    // ✨ Query directly from db.promise()
                     const [existing] = await db.promise().query('SELECT id FROM users WHERE uid = ?', [row.uid]);
 
                     if (existing.length > 0) {
                         skippedCount++;
                     } else {
+                        // ✨ Insert directly from db.promise()
                         await db.promise().query(
                             `INSERT INTO users 
                             (uid, dob, full_name, role, phone_no, address, room_no, batch, branch) 
                             VALUES (?, ?, ?, 'student', ?, ?, ?, ?, ?)`,
                             [
                                 row.uid, 
-                                mysqlDate, // ✨ Send the perfectly translated YYYY-MM-DD date!
+                                mysqlDate, 
                                 row.full_name, 
                                 row.phone_no || null, 
                                 row.address || null, 
-                                row.room_no || null,
+                                row.room_no ? row.room_no.toUpperCase() : null,
                                 row.batch || null,  
-                                row.branch || null  
+                                normalizedBranch 
                             ]
                         );
                         addedCount++;
                     }
+
+                    rowNumber++;
                 } 
 
-                // ✨ SMART RESPONSE LOGIC
-                if (addedCount === 0 && skippedCount === 0 && invalidCount > 0) {
-                    return res.status(400).json({ error: "Invalid CSV format. Please use the provided Template." });
-                }
-
-                let finalMessage = `Sync complete! Added ${addedCount}, Skipped ${skippedCount} duplicates.`;
-                if (invalidCount > 0) {
-                    finalMessage += ` ⚠️ Ignored ${invalidCount} empty or invalid rows.`;
-                }
-
+                // ✨ Commit the changes directly to the db instance
+                await db.promise().commit();
+                
+                let finalMessage = `Sync complete! Added ${addedCount} students.`;
+                if (skippedCount > 0) finalMessage += ` Skipped ${skippedCount} existing UIDs.`;
+                
                 res.json({ success: true, message: finalMessage });
 
-            } catch (dbErr) {
-                console.error("Database error during Student CSV import:", dbErr);
-                res.status(500).json({ error: "Database error during import." });
+            } catch (err) {
+                // ✨ Rollback directly on the db instance
+                await db.promise().rollback();
+                console.error("❌ Upload Aborted:", err.message);
+                
+                res.status(400).json({ 
+                    error: err.message, 
+                    details: "The entire upload was cancelled to protect database integrity. Please fix the CSV and try again." 
+                });
             }
+            // Note: No connection.release() needed since we aren't pulling from a pool!
         });
 });
 
-// --- 4. ADD SINGLE STUDENT MANUALLY ---
+//  4. ADD SINGLE STUDENT MANUALLY 
 app.post('/api/warden/students', async (req, res) => {
     const { uid, full_name, dob, phone_no, address, room_no, batch, branch } = req.body;
 
@@ -901,7 +943,7 @@ app.post('/api/warden/students', async (req, res) => {
     }
 });
 
-// --- 5. DELETE STUDENT ---
+// 5. DELETE STUDENT 
 app.delete('/api/warden/students/:uid', async (req, res) => {
     const { uid } = req.params;
     try {
@@ -990,8 +1032,9 @@ app.get('/api/warden/home-stats', async (req, res) => {
     }
 });
 
-
-// Menu Routes
+//=============================
+//----- Menu Routes-----
+//-------------------------
 // 1. GET: Fetch the entire Menu Catalog
 app.get('/api/admin/menu-catalog', (req, res) => {
     const sql = `
@@ -1019,12 +1062,12 @@ app.get('/api/admin/menu-catalog', (req, res) => {
 app.post('/api/admin/menu-catalog', (req, res) => {
     const { dish_name, diet_type, cost, effort_score } = req.body;
 
-    // ✨ 1. THE DIET BOUNCER
+    //  1. THE DIET BOUNCER
     if (!['Veg', 'Non-Veg', 'Common'].includes(diet_type)) {
         return res.status(400).json({ error: "Diet type must be exactly 'Veg', 'Non-Veg', or 'Common'." });
     }
 
-    // ✨ 2. THE EFFORT SCORE BOUNCER
+    //  2. THE EFFORT SCORE BOUNCER
     const effort = parseInt(effort_score);
     if (effort < 1 || effort > 10) {
         return res.status(400).json({ error: "Effort score must be a number between 1 and 10." });
@@ -1054,6 +1097,7 @@ app.post('/api/admin/menu-catalog', (req, res) => {
         });
     });
 });
+
 // 2b. DELETE: Remove a dish from the Menu Catalog
 app.delete('/api/admin/menu-catalog/:id', (req, res) => {
     const dishId = req.params.id;
@@ -1252,121 +1296,56 @@ app.put('/api/admin/daily-menu/approve', (req, res) => {
 });
 
 // //9. POST: Auto generate menu ai
-// app.post('/api/admin/ai-generate-menu', async (req, res) => {
-//     const { start_date, end_date, custom_prompt } = req.body;
-
-//     if (!start_date || !end_date) {
-//         return res.status(400).json({ error: "Start and End dates are required." });
-//     }
-
-//     try {
-//         // 1. Fetch the exact menu catalog from your database
-// const [catalog] = await db.promise().query("SELECT id, dish_name, diet_type, cost, effort_score, popularity_score FROM menu_catalog");        
-//         if (catalog.length === 0) {
-//             return res.status(400).json({ error: "Menu catalog is empty. Add dishes first!" });
-//         }
-
-//         // 2. Construct the strict AI Prompt
-//         const systemPrompt = `
-//         You are an expert Hostel Mess Manager and Nutritionist. 
-//         Your job is to generate a weekly menu schedule from ${start_date} to ${end_date}.
-        
-//         Here is the ONLY catalog of dishes you are allowed to use. Do NOT invent new dishes:
-//         ${JSON.stringify(catalog, null, 2)}
-
-//         RULES:
-//         1. Every single date between ${start_date} and ${end_date} must have exactly three meal types: "Breakfast", "Lunch", and "Dinner".
-//         2. For each meal, you must select at least ONE "Veg" or "Common" dish, AND at least ONE "Non-Veg" dish (unless the custom prompt says otherwise).
-//         3. Balance the 'cost' and 'effort_score' so the kitchen isn't overworked on any single day.
-//         4. Do not serve the same exact meal two days in a row.
-//         5. 5. MAXIMIZE STUDENT HAPPINESS: Prioritize dishes with a high 'popularity_score'. If you must schedule a high-effort or high-cost dish, ensure its popularity justifies it.
-//         6. The Warden provided these custom instructions: "${custom_prompt || 'Balance cost and nutrition.'}"
-
-//         OUTPUT FORMAT:
-//         You must return ONLY a raw JSON array of objects. No markdown formatting, no \`\`\`json blocks, no explanations. Just the array.
-//         Example format:
-//         [
-//           { "serve_date": "YYYY-MM-DD", "meal_type": "Breakfast", "dish_id": 15 },
-//           { "serve_date": "YYYY-MM-DD", "meal_type": "Breakfast", "dish_id": 22 }
-//         ]
-//         `;
-
-//         // 3. Call the AI Model
-//         const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-//         const result = await model.generateContent(systemPrompt);
-//         let aiResponse = result.response.text();
-
-//         // 4. Clean the response (AI sometimes adds markdown ticks even when told not to)
-//         aiResponse = aiResponse.replace(/```json/g, "").replace(/```/g, "").trim();
-
-//         // 5. Parse and send back to frontend
-//         const generatedMenu = JSON.parse(aiResponse);
-//         res.json({ success: true, proposed_menu: generatedMenu });
-
-//     } catch (err) {
-//         console.error("AI Generation Error:", err);
-//         res.status(500).json({ error: "The AI failed to generate the menu. Please try again." });
-//     }
-// });
-
 // POST: Auto-generate menu using Gemini (Common Sense) + Python GA (Math)
+
 app.post('/api/admin/ga-generate-menu', async (req, res) => {
     const { start_date, end_date, custom_prompt } = req.body;
 
-    if (!start_date) {
-        return res.status(400).json({ error: "Start date is required." });
-    }
+    if (!start_date) return res.status(400).json({ error: "Start date is required." });
 
     try {
-        // 1. Fetch the catalog
+        // 1. Fetch Catalog
         const [catalog] = await db.promise().query("SELECT id, dish_name, diet_type, cost, effort_score, popularity_score FROM menu_catalog");
         
-        if (catalog.length === 0) {
-            return res.status(400).json({ error: "Menu catalog is empty." });
-        }
+        // 2. Python Runs First (Mathematical Draft)
+        const pythonRes = await axios.post('http://localhost:5000/generate-menu', { catalog, start_date });
+        const pythonDraft = pythonRes.data.proposed_menu;
 
-        // 2. ASK GEMINI FOR "COMMON SENSE"
-        // We ask Gemini to categorize the dish IDs so we don't serve Chicken for Breakfast
-        const systemPrompt = `You are a Kerala/Indian Hostel Mess Manager. Look at this catalog:
-        ${JSON.stringify(catalog)}
-        
-        Categorize the dish IDs into "breakfast", "lunch", and "dinner" based on common culinary sense. 
-        For example: Idli, Appam, Bread, Puri are breakfast. Rice, Biryani, Chicken are Lunch/Dinner. 
-        A dish CAN be in multiple categories if it makes sense.
+        // 3. Gemini Runs Second (Audit & Apply Your Rules)
+        const systemPrompt = `You are a Kerala Hostel Mess Manager. 
+        Algorithm Draft: ${JSON.stringify(pythonDraft)}
+        Full Catalog: ${JSON.stringify(catalog)}
 
-        RULES:
-         1. Every single date between ${start_date} and ${end_date} must have exactly three meal types: "Breakfast", "Lunch", and "Dinner".
-         2. For each meal, you must select at least ONE "Veg" or "Common" dish, AND at least ONE "Non-Veg" dish (unless the custom prompt says otherwise).
-         3. Balance the 'cost' and 'effort_score' so the kitchen isn't overworked on any single day.
-         4. Do not serve the same exact meal two days in a row.
-         5. MAXIMIZE STUDENT HAPPINESS: Prioritize dishes with a high 'popularity_score'. If you must schedule a high-effort or high-cost dish, ensure its popularity justifies it.
-         6. The Warden provided these custom instructions: "${custom_prompt || 'Balance cost and nutrition.'}"
+        Audit and finalize the draft menu. You MUST fix any culinary errors (e.g., Rice/Chicken for Breakfast). 
+        If you replace a dish, you MUST update both the 'dish_name' and 'dish_id' from the Catalog.
 
-        
-        Return ONLY a raw JSON object exactly like this, with no markdown:
-        { "breakfast": [1, 5], "lunch": [2, 6, 8], "dinner": [2, 7, 8] }`;
+        STRICT RULES:
+        1. Dates between ${start_date} and ${end_date} must have Breakfast, Lunch, and Dinner.
+        2. Every meal MUST have one Veg/Common option AND one Non-Veg option(unless Friday/Custom says otherwise).
+        3. Don't include another Veg/Non-Veg option along with a Common option on any slot. 
+        4. Prioritize rice items for Lunch if present.
+        5. Balance cost and effort score.
+        6. No exact repeat meals two days in a row.
+        7. Prioritize high popularity_score items.
+        8. Warden Instruction: "${custom_prompt || 'Select only one Common Meal for every BreakFast Slot'}"
 
-        // Assuming genAI is already initialized at the top of your server.js!
+        Return ONLY the finalized array of objects as raw JSON. No markdown.`;
+
         const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
         const result = await model.generateContent(systemPrompt);
         
-        // Clean the response
-        let aiText = result.response.text().replace(/```json/g, "").replace(/```/g, "").trim();
-        const smartCategories = JSON.parse(aiText);
-
-        // 3. SEND BOTH TO PYTHON FOR STRICT MATH OPTIMIZATION
-        const aiResponse = await axios.post('http://localhost:5000/generate-menu', {
-            catalog: catalog,
-            start_date: start_date,
-            categories: smartCategories // Pass Gemini's brain to Python!
-        });
-
-        // 4. Send back to React
-        res.json({ success: true, proposed_menu: aiResponse.data.proposed_menu });
+        // --- Bulletproof Extraction ---
+        let aiText = result.response.text();
+        const start = aiText.indexOf('['), end = aiText.lastIndexOf(']');
+        if (start !== -1 && end !== -1) aiText = aiText.substring(start, end + 1);
+        aiText = aiText.replace(/[\x00-\x1F\x7F-\x9F]/g, "");
+        
+        const finalMenu = JSON.parse(aiText);
+        res.json({ success: true, proposed_menu: finalMenu });
 
     } catch (err) {
-        console.error("Failed in Hybrid AI Pipeline:", err);
-        res.status(500).json({ error: "AI Engine failed to generate menu." });
+        console.error("Hybrid AI Pipeline Error:", err);
+        res.status(500).json({ error: "AI Pipeline failed." });
     }
 });
 
@@ -1493,19 +1472,19 @@ app.put('/api/admin/weekly-menu/sync', async (req, res) => {
 
 
 
-// WARDEN MESS REVIEWS API
+// -------WARDEN MESS REVIEWS API-------
 // GET: Fetch all student mess reviews for the Analytics Dashboard
 app.get('/api/admin/mess-reviews', (req, res) => {
-    // ✨ UPGRADED: Dynamically fetches the exact dishes served for this specific review!
     const sql = `
         SELECT 
             r.id, r.serve_date, r.meal_type, r.diet_type, r.rating, r.dish_issues, r.comment, r.created_at,
             (
-                SELECT GROUP_CONCAT(mc.dish_name SEPARATOR ' + ')
+                SELECT GROUP_CONCAT(mc.dish_name ORDER BY mc.diet_type ASC SEPARATOR ' + ')
                 FROM daily_menu dm
                 JOIN menu_catalog mc ON dm.dish_id = mc.id
-                WHERE dm.serve_date = r.serve_date 
+                WHERE DATE(dm.serve_date) = DATE(r.serve_date) 
                   AND dm.meal_type = r.meal_type
+                  AND dm.status = 'Approved' 
                   AND (mc.diet_type = r.diet_type OR mc.diet_type = 'Common')
             ) AS served_dishes
         FROM mess_reviews r 
@@ -1520,8 +1499,7 @@ app.get('/api/admin/mess-reviews', (req, res) => {
         res.json(results);
     });
 });
-
-// 🧠 GENERATE AI INSIGHTS FROM REVIEWS
+//  GENERATE AI INSIGHTS FROM REVIEWS
 app.post('/api/admin/generate-insights', async (req, res) => {
     const { reviews, stats } = req.body;
 
@@ -1553,132 +1531,13 @@ app.post('/api/admin/generate-insights', async (req, res) => {
 
 
 
-// ==========================================
-// Whatsapp connect APIs
-// ==========================================
-
-// // WhatsApp control endpoints
-// app.get('/api/whatsapp/qr', (req, res) => {
-//   const qrPath = path.join(__dirname, 'public', 'qr.png');
-  
-//   if (fs.existsSync(qrPath)) {
-//     res.sendFile(qrPath);
-//   } else {
-//     res.status(404).json({ error: 'QR code not available' });
-//   }
-// });
-
-// app.get('/api/whatsapp/status', (req, res) => {
-//   res.json({
-//     connected: client.info ? true : false,
-//     ready: client.info !== null,
-//     phone: client.info?.me?.user || null
-//   });
-// });
-
-// app.post('/api/whatsapp/disconnect', async (req, res) => {
-//   try {
-//     console.log('Disconnecting WhatsApp client...');
-    
-//     // Force logout with multiple methods
-//     if (client.info) {
-//       try {
-//         console.log('Attempting logout...');
-        
-//         // Method 1: Try direct logout
-//         await client.logout();
-//         console.log('Logout method 1 completed');
-//       } catch (logoutError1) {
-//         console.log('Logout method 1 failed:', logoutError1.message);
-        
-//         try {
-//           // Method 2: Use page evaluation to force logout
-//           const page = await client.pupPage;
-//           if (page) {
-//             await page.evaluate(() => {
-//               // Find and click logout/leave button in WhatsApp UI
-//               const logoutBtn = document.querySelector('[data-icon="logout"], [title*="Log out"], [aria-label*="Log out"]');
-//               if (logoutBtn) {
-//                 logoutBtn.click();
-//               }
-//             });
-//             console.log('Logout method 2 completed');
-//           }
-//         } catch (logoutError2) {
-//           console.log('Logout method 2 failed:', logoutError2.message);
-//         }
-//       }
-//     }
-    
-//     // Wait a moment for logout to complete
-//     await new Promise(resolve => setTimeout(resolve, 2000));
-    
-//     // Destroy client
-//     // Move the response to the VERY end of the try block
-//     await client.destroy();
-//     // ... (all your fs.removeSync and exec logic)
-
-//     // Move this line to the very bottom of the try block
-//     res.json({ success: true, message: 'WhatsApp disconnected successfully' });
-//     console.log('Client destroyed');
-    
-//     // Force kill any remaining Chrome processes
-//     const { exec } = require('child_process');
-//     exec('taskkill /IM chrome.exe /F 2>nul', (error) => {
-//       if (error) {
-//         console.log('No Chrome processes to kill');
-//       } else {
-//         console.log('Killed remaining Chrome processes');
-//       }
-//     });
-    
-//     // Clean up session data completely
-//     const fs = require('fs-extra');
-//     const path = require('path');
-//     const authPath = path.join(__dirname, '.wwebjs_auth');
-//     if (fs.existsSync(authPath)) {
-//       fs.removeSync(authPath);
-//       console.log('Cleaned up session data');
-//     }
-    
-//     // Reset QR code
-//     const qrPath = path.join(__dirname, 'public', 'qr.png');
-//     if (fs.existsSync(qrPath)) {
-//       fs.removeSync(qrPath);
-//       console.log('Removed QR code');
-//     }
-    
-//     res.json({ success: true, message: 'WhatsApp disconnected successfully' });
-//   } catch (error) {
-//     console.error('Disconnect error:', error);
-//     res.status(500).json({ success: false, error: 'Failed to disconnect' });
-//   }
-// });
-
-// // Manual WhatsApp initialization endpoint
-// app.post('/api/whatsapp/connect', async (req, res) => {
-//   try {
-//     console.log('Initializing WhatsApp client...');
-//     await client.initialize();
-//     res.json({ success: true, message: 'WhatsApp initialization started' });
-//   } catch (error) {
-//     console.error('Initialization error:', error);
-//     res.status(500).json({ success: false, error: 'Failed to initialize WhatsApp' });
-//   }
-// });
 
 
 
 
 
 
-
-
-
-
-
-
-// 🛠️ TEMPORARY ROUTE TO FORCE BAYESIAN CALCULATION (WITH FLAG PENALTIES)
+//  TEMPORARY ROUTE TO FORCE BAYESIAN CALCULATION 
 app.get('/api/admin/force-popularity-sync', async (req, res) => {
     console.log("🧮 Running Math Engine: Bayesian Average + Flag Penalties...");
 
