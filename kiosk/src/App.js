@@ -1,11 +1,11 @@
 import React from 'react';
-import DynamicQr from './DynamicQR.js';
+import EnhancedDynamicQR from './EnhancedDynamicQR.js';
 
 function App() {
   return (
     <div className="App">
       <main>
-        <DynamicQr />
+        <EnhancedDynamicQR/>
       </main>
     </div>
   );
