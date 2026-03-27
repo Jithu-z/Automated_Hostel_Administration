@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WhatsApp Bot Control Panel</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="qr-modal" id="qrModal">
+            <div class="qr-content">
+                <h2>Scan QR Code with WhatsApp</h2>
+                <div class="qr-container">
+                    <img id="qrImage" src="" alt="QR Code">
+                    <div class="qr-instructions">
+                        <p><strong>TO SCAN:</strong></p>
+                        <ol>
+                            <li>Open WHATSAPP on your phone</li>
+                            <li>Go to SETTINGS → LINKED DEVICES</li>
+                            <li>Tap "LINK A DEVICE"</li>
+                            <li>Scan this QR code</li>
+                        </ol>
+                    </div>
+                </div>
+                <button id="closeQR" class="close-btn">Close</button>
+            </div>
+        </div>
+
+        <div class="status-indicator" id="statusIndicator">
+            <div class="status-dot" id="statusDot"></div>
+            <span id="statusText">Disconnected</span>
+        </div>
+
+        <button id="whatsappButton" class="whatsapp-button">
+            LINK WHATSAPP BOT
+        </button>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
