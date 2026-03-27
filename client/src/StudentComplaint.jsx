@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-const SERVER_URL = 'http://10.0.9.78:3001';
+const SERVER_URL = 'http://192.168.1.11:3001';
 const API_BASE = `${SERVER_URL}/api`;
 
 function StudentComplaint() {

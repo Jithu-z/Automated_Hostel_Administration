@@ -1,5 +1,4 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { useState, useEffect, useMemo, useRef } from 'react';
 import axios from 'axios';
 import { 
   Home,Star,Clock,RefreshCw,Trash2,Search, CheckCircle, ClipboardList, Utensils, Moon, AlertCircle, Users, Settings, LogOut, 
@@ -12,7 +11,6 @@ const SERVER_URL = 'http://localhost:3001';
 const API_BASE = `${SERVER_URL}/api`;
 // --- SUB-COMPONENTS  ---
 
-const OvernightLogTab = () => {
 const OvernightLogTab = () => {
   const [stats, setStats] = useState({ out_now: 0, total_students: 50 });
   const [recentLogs, setRecentLogs] = useState([]);
@@ -42,9 +40,7 @@ const OvernightLogTab = () => {
         setStats(res.data.stats);
         setRecentLogs(res.data.recent_logs);
       })
-      .catch(err => console.error("Dashboard fetch error", err)) // We leave this as console.error so it doesn't spam toasts every 5 seconds if the Wi-Fi drops!
-      .finally(() => setLoading(false));
-      .catch(err => console.error("Dashboard fetch error", err)) // We leave this as console.error so it doesn't spam toasts every 5 seconds if the Wi-Fi drops!
+      .catch(err => console.error("Dashboard fetch error", err)) 
       .finally(() => setLoading(false));
   };
 
@@ -182,441 +178,311 @@ const OvernightLogTab = () => {
       const matchFilter = gateFilter === 'All' 
         ? true 
         : (gateFilter === 'Checked Out' ? log.status === 'out' : log.status === 'returned');
-      const logDateString = new Date(log.exit_time).toISOString().split('T')[0];
-      const matchDate = gateDate === '' ? true : logDateString === gateDate;
+      
       const logDateString = new Date(log.exit_time).toISOString().split('T')[0];
       const matchDate = gateDate === '' ? true : logDateString === gateDate;
 
-      return matchText && matchFilter && matchDate;
       return matchText && matchFilter && matchDate;
   });
 
   return (
-  <div className="animate-fade-in">
-    {isLocked && (
+    <div className="animate-fade-in">
+      {isLocked && (
         <div className="fixed inset-0 z-[40] bg-black/10 backdrop-blur-[2px] cursor-not-allowed" />
       )}
-    {/* --- HEADER & GLOBAL ACTIONS --- */}
-    <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-800">Overnight Logs</h1>
-        <p className="text-sm text-gray-500 mt-1">Monitor live campus exits and entries.</p>
-      </div>
-      <div className="flex items-center gap-3 w-full md:w-auto">
-        <button 
-          onClick={handleReset}
-          className="flex-1 md:flex-none px-4 py-2.5 bg-red-50 text-red-600 font-bold border border-red-200 rounded-xl hover:bg-red-100 hover:border-red-300 transition text-sm flex items-center justify-center gap-2 active:scale-95"
-        >
-          <AlertTriangle size={16} /> Factory Reset
-        </button>
-        <button 
-          onClick={fetchOvernightLogData} 
-          className="p-2.5 bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md transition active:scale-95"
-          title="Refresh Data"
-        >
-          <RefreshCw size={18} className={`text-blue-600 ${loading ? 'animate-spin' : ''}`} />
-        </button>
-      </div>
-    </div>
-    
-    {/* --- STATS GRID --- */}
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
       
-      {/* Students Out Card (Clickable) */}
-    {isLocked && (
-        <div className="fixed inset-0 z-[40] bg-black/10 backdrop-blur-[2px] cursor-not-allowed" />
-      )}
-    {/* --- HEADER & GLOBAL ACTIONS --- */}
-    <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-800">Overnight Logs</h1>
-        <p className="text-sm text-gray-500 mt-1">Monitor live campus exits and entries.</p>
+      {/* --- HEADER & GLOBAL ACTIONS --- */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-800">Overnight Logs</h1>
+          <p className="text-sm text-gray-500 mt-1">Monitor live campus exits and entries.</p>
+        </div>
+        <div className="flex items-center gap-3 w-full md:w-auto">
+          <button 
+            onClick={handleReset}
+            className="flex-1 md:flex-none px-4 py-2.5 bg-red-50 text-red-600 font-bold border border-red-200 rounded-xl hover:bg-red-100 hover:border-red-300 transition text-sm flex items-center justify-center gap-2 active:scale-95"
+          >
+            <AlertTriangle size={16} /> Factory Reset
+          </button>
+          <button 
+            onClick={fetchOvernightLogData} 
+            className="p-2.5 bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md transition active:scale-95"
+            title="Refresh Data"
+          >
+            <RefreshCw size={18} className={`text-blue-600 ${loading ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
       </div>
-      <div className="flex items-center gap-3 w-full md:w-auto">
-        <button 
-          onClick={handleReset}
-          className="flex-1 md:flex-none px-4 py-2.5 bg-red-50 text-red-600 font-bold border border-red-200 rounded-xl hover:bg-red-100 hover:border-red-300 transition text-sm flex items-center justify-center gap-2 active:scale-95"
-        >
-          <AlertTriangle size={16} /> Factory Reset
-        </button>
-        <button 
-          onClick={fetchOvernightLogData} 
-          className="p-2.5 bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md transition active:scale-95"
-          title="Refresh Data"
-        >
-          <RefreshCw size={18} className={`text-blue-600 ${loading ? 'animate-spin' : ''}`} />
-        </button>
-      </div>
-    </div>
-    
-    {/* --- STATS GRID --- */}
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
       
-      {/* Students Out Card (Clickable) */}
-      <div 
-        onClick={handleOutClick} 
-        className="bg-red-50 p-6 rounded-2xl border border-red-100 cursor-pointer hover:shadow-md hover:border-red-300 transition-all group relative overflow-hidden"
-        className="bg-red-50 p-6 rounded-2xl border border-red-100 cursor-pointer hover:shadow-md hover:border-red-300 transition-all group relative overflow-hidden"
-      >
-        <div className="absolute top-0 right-0 w-32 h-32 bg-red-100 rounded-bl-full opacity-50 -z-10 group-hover:scale-110 transition-transform"></div>
-        <div className="flex justify-between items-start z-10">
-        <div className="absolute top-0 right-0 w-32 h-32 bg-red-100 rounded-bl-full opacity-50 -z-10 group-hover:scale-110 transition-transform"></div>
-        <div className="flex justify-between items-start z-10">
-          <div>
-            <p className="text-sm font-bold text-red-400 uppercase tracking-wider mb-1">Currently Out</p>
-            <h3 className="text-4xl font-black text-red-700">{stats.out_now}</h3>
-            <p className="text-sm font-bold text-red-400 uppercase tracking-wider mb-1">Currently Out</p>
-            <h3 className="text-4xl font-black text-red-700">{stats.out_now}</h3>
-          </div>
-          <div className="p-3 bg-red-200/50 rounded-xl text-red-600"><LogOut size={24}/></div>
-          <div className="p-3 bg-red-200/50 rounded-xl text-red-600"><LogOut size={24}/></div>
-        </div>
-        <div className="mt-4 flex items-center text-sm font-bold text-red-600 gap-1 group-hover:translate-x-1 transition-transform">
-          View Absent List <span>&rarr;</span>
-        </div>
-        <div className="mt-4 flex items-center text-sm font-bold text-red-600 gap-1 group-hover:translate-x-1 transition-transform">
-          View Absent List <span>&rarr;</span>
-        </div>
-      </div>
-
-      {/* Total Students Card */}
-      <div className="bg-blue-50 p-6 rounded-2xl border border-blue-100 relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-32 h-32 bg-blue-100 rounded-bl-full opacity-50 -z-10"></div>
-        <div className="flex justify-between items-start z-10">
-      {/* Total Students Card */}
-      <div className="bg-blue-50 p-6 rounded-2xl border border-blue-100 relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-32 h-32 bg-blue-100 rounded-bl-full opacity-50 -z-10"></div>
-        <div className="flex justify-between items-start z-10">
-          <div>
-            <p className="text-sm font-bold text-blue-400 uppercase tracking-wider mb-1">Total Residents</p>
-            <h3 className="text-4xl font-black text-blue-700">{stats.total_students}</h3>
-            <p className="text-sm font-bold text-blue-400 uppercase tracking-wider mb-1">Total Residents</p>
-            <h3 className="text-4xl font-black text-blue-700">{stats.total_students}</h3>
-          </div>
-          <div className="p-3 bg-blue-200/50 rounded-xl text-blue-600"><Users size={24}/></div>
-          <div className="p-3 bg-blue-200/50 rounded-xl text-blue-600"><Users size={24}/></div>
-        </div>
-        <div className="mt-4 flex items-center text-sm font-bold text-blue-500 gap-1">
-          On Registry
-        </div>
-        <div className="mt-4 flex items-center text-sm font-bold text-blue-500 gap-1">
-          On Registry
-        </div>
-      </div>
-    </div>
-
-    {/* --- RECENT LOGS TABLE --- */}
-    <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-      
-      {/* Table Toolbar */}
-      <div className="p-5 border-b border-gray-100 flex flex-col sm:flex-row justify-between items-center gap-4 bg-gray-50/50">
-        <h3 className="font-bold text-gray-800 flex items-center gap-2">
-          Recent Gate Activity
-        </h3>
+      {/* --- STATS GRID --- */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
         
-        <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
-          
-          {/* Search Input */}
-          <div className="relative w-full sm:w-56">
-              <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-              <input 
-                  type="text" 
-                  placeholder="Search log..." 
-                  value={gateSearch}
-                  onChange={(e) => setGateSearch(e.target.value)}
-                  className="w-full pl-9 pr-4 py-2 bg-white border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 transition shadow-sm"
-              />
+        {/* Students Out Card (Clickable) */}
+        <div 
+          onClick={handleOutClick} 
+          className="bg-red-50 p-6 rounded-2xl border border-red-100 cursor-pointer hover:shadow-md hover:border-red-300 transition-all group relative overflow-hidden"
+        >
+          <div className="absolute top-0 right-0 w-32 h-32 bg-red-100 rounded-bl-full opacity-50 -z-10 group-hover:scale-110 transition-transform"></div>
+          <div className="flex justify-between items-start z-10">
+            <div>
+              <p className="text-sm font-bold text-red-400 uppercase tracking-wider mb-1">Currently Out</p>
+              <h3 className="text-4xl font-black text-red-700">{stats.out_now}</h3>
+            </div>
+            <div className="p-3 bg-red-200/50 rounded-xl text-red-600"><LogOut size={24}/></div>
           </div>
-
-          {/*Date Picker*/}
-          <div className={`flex items-center w-full sm:w-auto pr-2 border rounded-lg transition shadow-sm ${
-            gateDate ? 'border-blue-400 bg-blue-50' : 'bg-white border-gray-200'
-          }`}>
-              <input 
-                  type="date" 
-                  value={gateDate}
-                  onChange={(e) => setGateDate(e.target.value)}
-                  className={`flex-1 pl-3 pr-1 py-2 bg-transparent text-sm font-medium outline-none w-full sm:w-40 ${
-                    gateDate ? 'text-blue-700' : 'text-gray-700'
-                  }`}
-                  title="Filter by Date"
-              />
-              
-              {/* Clear Date Button */}
-              {gateDate && (
-                <button 
-                  onClick={() => setGateDate('')}
-                  className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full text-blue-400 hover:text-red-600 hover:bg-red-100 transition-colors text-sm font-bold ml-1"
-                  title="Clear Date Filter"
-                >
-                  ✕
-                </button>
-              )}
+          <div className="mt-4 flex items-center text-sm font-bold text-red-600 gap-1 group-hover:translate-x-1 transition-transform">
+            View Absent List <span>&rarr;</span>
           </div>
+        </div>
 
-          {/* Status Filter */}
-          <div className="relative w-full sm:w-auto">
-              <Filter size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-              <select 
-                  value={gateFilter}
-                  onChange={(e) => setGateFilter(e.target.value)}
-                  className="w-full sm:w-auto pl-9 pr-8 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-700 outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer appearance-none shadow-sm"
-              >
-                  <option value="All">All Statuses</option>
-                  <option value="Checked In">Returned</option>
-                  <option value="Checked Out">Checked-Out</option>
-              </select>
+        {/* Total Students Card */}
+        <div className="bg-blue-50 p-6 rounded-2xl border border-blue-100 relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-blue-100 rounded-bl-full opacity-50 -z-10"></div>
+          <div className="flex justify-between items-start z-10">
+            <div>
+              <p className="text-sm font-bold text-blue-400 uppercase tracking-wider mb-1">Total Residents</p>
+              <h3 className="text-4xl font-black text-blue-700">{stats.total_students}</h3>
+            </div>
+            <div className="p-3 bg-blue-200/50 rounded-xl text-blue-600"><Users size={24}/></div>
+          </div>
+          <div className="mt-4 flex items-center text-sm font-bold text-blue-500 gap-1">
+            On Registry
           </div>
         </div>
       </div>
 
-      {/* Table Content */}
-    {/* --- RECENT LOGS TABLE --- */}
-    <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-      
-      {/* Table Toolbar */}
-      <div className="p-5 border-b border-gray-100 flex flex-col sm:flex-row justify-between items-center gap-4 bg-gray-50/50">
-        <h3 className="font-bold text-gray-800 flex items-center gap-2">
-          Recent Gate Activity
-        </h3>
+      {/* --- RECENT LOGS TABLE --- */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
         
-        <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+        {/* Table Toolbar */}
+        <div className="p-5 border-b border-gray-100 flex flex-col sm:flex-row justify-between items-center gap-4 bg-gray-50/50">
+          <h3 className="font-bold text-gray-800 flex items-center gap-2">
+            Recent Gate Activity
+          </h3>
           
-          {/* Search Input */}
-          <div className="relative w-full sm:w-56">
-              <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-              <input 
-                  type="text" 
-                  placeholder="Search log..." 
-                  value={gateSearch}
-                  onChange={(e) => setGateSearch(e.target.value)}
-                  className="w-full pl-9 pr-4 py-2 bg-white border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 transition shadow-sm"
-              />
-          </div>
+          <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+            
+            {/* Search Input */}
+            <div className="relative w-full sm:w-56">
+                <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                <input 
+                    type="text" 
+                    placeholder="Search log..." 
+                    value={gateSearch}
+                    onChange={(e) => setGateSearch(e.target.value)}
+                    className="w-full pl-9 pr-4 py-2 bg-white border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 transition shadow-sm"
+                />
+            </div>
 
-          {/*Date Picker*/}
-          <div className={`flex items-center w-full sm:w-auto pr-2 border rounded-lg transition shadow-sm ${
-            gateDate ? 'border-blue-400 bg-blue-50' : 'bg-white border-gray-200'
-          }`}>
-              <input 
-                  type="date" 
-                  value={gateDate}
-                  onChange={(e) => setGateDate(e.target.value)}
-                  className={`flex-1 pl-3 pr-1 py-2 bg-transparent text-sm font-medium outline-none w-full sm:w-40 ${
-                    gateDate ? 'text-blue-700' : 'text-gray-700'
-                  }`}
-                  title="Filter by Date"
-              />
-              
-              {/* Clear Date Button */}
-              {gateDate && (
-                <button 
-                  onClick={() => setGateDate('')}
-                  className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full text-blue-400 hover:text-red-600 hover:bg-red-100 transition-colors text-sm font-bold ml-1"
-                  title="Clear Date Filter"
+            {/*Date Picker*/}
+            <div className={`flex items-center w-full sm:w-auto pr-2 border rounded-lg transition shadow-sm ${
+              gateDate ? 'border-blue-400 bg-blue-50' : 'bg-white border-gray-200'
+            }`}>
+                <input 
+                    type="date" 
+                    value={gateDate}
+                    onChange={(e) => setGateDate(e.target.value)}
+                    className={`flex-1 pl-3 pr-1 py-2 bg-transparent text-sm font-medium outline-none w-full sm:w-40 ${
+                      gateDate ? 'text-blue-700' : 'text-gray-700'
+                    }`}
+                    title="Filter by Date"
+                />
+                
+                {/* Clear Date Button */}
+                {gateDate && (
+                  <button 
+                    onClick={() => setGateDate('')}
+                    className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full text-blue-400 hover:text-red-600 hover:bg-red-100 transition-colors text-sm font-bold ml-1"
+                    title="Clear Date Filter"
+                  >
+                    ✕
+                  </button>
+                )}
+            </div>
+
+            {/* Status Filter */}
+            <div className="relative w-full sm:w-auto">
+                <Filter size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                <select 
+                    value={gateFilter}
+                    onChange={(e) => setGateFilter(e.target.value)}
+                    className="w-full sm:w-auto pl-9 pr-8 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-700 outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer appearance-none shadow-sm"
                 >
-                  ✕
-                </button>
-              )}
-          </div>
-
-          {/* Status Filter */}
-          <div className="relative w-full sm:w-auto">
-              <Filter size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-              <select 
-                  value={gateFilter}
-                  onChange={(e) => setGateFilter(e.target.value)}
-                  className="w-full sm:w-auto pl-9 pr-8 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-700 outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer appearance-none shadow-sm"
-              >
-                  <option value="All">All Statuses</option>
-                  <option value="Checked In">Returned</option>
-                  <option value="Checked Out">Checked-Out</option>
-              </select>
+                    <option value="All">All Statuses</option>
+                    <option value="Checked In">Returned</option>
+                    <option value="Checked Out">Checked-Out</option>
+                </select>
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Table Content */}
-      <div className="overflow-x-auto">
-        <table className="w-full text-left">
-          <thead className="bg-gray-50 text-sm font-bold text-gray-500 uppercase tracking-wider border-b border-gray-200">
-          <thead className="bg-gray-50 text-sm font-bold text-gray-500 uppercase tracking-wider border-b border-gray-200">
-            <tr>
-              <th className="px-6 py-4">Student</th>
-              <th className="px-6 py-4">Status</th>
-              <th className="px-6 py-4">Time</th>
-              <th className="px-6 py-4">Destination & Reason</th>
-              <th className="px-6 py-4">Destination & Reason</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {filteredRecentLogs.length === 0 ? (
+        {/* Table Content */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-left">
+            <thead className="bg-gray-50 text-sm font-bold text-gray-500 uppercase tracking-wider border-b border-gray-200">
               <tr>
-                <td colSpan="4" className="px-6 py-12 text-center text-gray-400 bg-gray-50/50">
-                  <div className="flex flex-col items-center gap-2">
-                    <Filter size={32} className="text-gray-300" />
-                    <p>No log records found.</p>
-                  </div>
-                </td>
+                <th className="px-6 py-4">Student</th>
+                <th className="px-6 py-4">Status</th>
+                <th className="px-6 py-4">Time</th>
+                <th className="px-6 py-4">Destination & Reason</th>
               </tr>
-            ) : (
-              filteredRecentLogs.map((log) => (
-                <tr key={log.id} className="hover:bg-blue-50/50 transition-colors">
-                  <td className="px-6 py-4">
-                    <p className="font-bold text-gray-800">{log.full_name || "Unknown"}</p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-sm text-gray-500 font-medium">{log.uid}</span>
-                      {log.room_no && (
-                        <>
-                          <span className="text-gray-300">•</span>
-                          <span className="text-xs font-bold text-gray-600 bg-gray-100 px-1.5 py-0.5 rounded border border-gray-200">
-                            🚪 {log.room_no}
-                          </span>
-                          <span className="text-xs text-gray-500 font-medium hidden md:inline-block">
-                            {log.branch} ({log.batch})
-                          </span>
-                        </>
-                      )}
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {filteredRecentLogs.length === 0 ? (
+                <tr>
+                  <td colSpan="4" className="px-6 py-12 text-center text-gray-400 bg-gray-50/50">
+                    <div className="flex flex-col items-center gap-2">
+                      <Filter size={32} className="text-gray-300" />
+                      <p>No log records found.</p>
                     </div>
                   </td>
-                  <td className="px-6 py-4">
-                    <span className={`px-2.5 py-1 rounded-md text-xs font-black uppercase tracking-wider ${
-                      log.status === 'out' ? 'bg-orange-100 text-orange-700 border border-orange-200' : 'bg-green-100 text-green-700 border border-green-200'
-                    }`}>
-                      {log.status === 'out' ? 'Checked Out' : 'Returned'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-1.5 text-sm font-bold text-gray-700">
-                        <Clock size={14} className="text-gray-400" />
-                        {new Date(log.exit_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </div>
-                      <div className="text-sm text-gray-400 mt-1 font-medium pl-5">
-                        {new Date(log.exit_time).toLocaleDateString()}
-                      </div>
-                  </td>
-                  <td className="px-6 py-4 max-w-xs">
-                    <p className="text-sm font-bold text-gray-800 truncate">{log.destination || 'N/A'}</p>
-                    <p className="text-sm text-gray-500 truncate mt-0.5">{log.reason}</p>
-                  </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    {/* --- STUDENTS OUT MODAL --- */}
-    {/* --- STUDENTS OUT MODAL --- */}
-    {showOutModal && (
-      <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm p-4 animate-fade-in">
-        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl overflow-hidden animate-slide-up flex flex-col max-h-[85vh]">
-          
-          <div className="bg-gradient-to-r from-red-600 to-red-700 p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 text-white">
-            <div>
-              <h3 className="font-black text-xl flex items-center gap-2">
-                <AlertTriangle size={20} /> Active Absences
-              </h3>
-              <p className="text-red-200 text-sm mt-1">Students currently off-campus</p>
-            </div>
-            
-            <div className="flex items-center gap-4 w-full md:w-auto">
-              <div className="relative w-full md:w-64">
-                  <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                  <input 
-                      type="text" 
-                      placeholder="Search by Name, Room, UID or branch..." 
-                      value={absentSearch}
-                      onChange={(e) => setAbsentSearch(e.target.value)}
-                      className="text-black w-full pl-9 pr-4 py-2 bg-white rounded-lg text-sm outline-none focus:ring-2 focus:ring-red-300 transition shadow-sm"
-                  />
-              </div>
-              <button 
-                onClick={() => {setShowOutModal(false); setAbsentSearch('');}} 
-                className="hover:bg-red-800 p-2 rounded-lg transition-colors bg-red-700/50 shrink-0"
-              >
-                ✕
-              </button>
-            </div>
-          </div>
-
-          <div className="flex-1 overflow-y-auto p-0 bg-gray-50">
-            {filteredOutStudents.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-64 text-gray-400">
-                <div className="bg-green-100 text-green-600 p-4 rounded-full mb-3"><Users size={32}/></div>
-                <p className="font-bold text-gray-600">No Data</p>
-                <p className="text-sm mt-1">No student info found.</p>
-              </div>
-            ) : (
-              <table className="w-full text-left border-collapse">
-                <thead className="bg-white sticky top-0 shadow-sm z-10">
-                  <tr className="border-b border-gray-200 text-sm font-bold text-gray-400 uppercase tracking-wider">
-                    <th className="p-4 pl-6">Student Details</th>
-                    <th className="p-4">Room No.</th>
-                    <th className="p-4">Phone No.</th>
-                    <th className="p-4">Home Address</th>
-                    <th className="p-4 pr-6 text-right">Emergency Action</th>
-                <thead className="bg-white sticky top-0 shadow-sm z-10">
-                  <tr className="border-b border-gray-200 text-sm font-bold text-gray-400 uppercase tracking-wider">
-                    <th className="p-4 pl-6">Student Details</th>
-                    <th className="p-4">Room No.</th>
-                    <th className="p-4">Phone No.</th>
-                    <th className="p-4">Home Address</th>
-                    <th className="p-4 pr-6 text-right">Emergency Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 bg-white">
-                <tbody className="divide-y divide-gray-100 bg-white">
-                  {filteredOutStudents.map((student) => (
-                    <tr key={student.uid} className="hover:bg-red-50/30 transition-colors">
-                      <td className="p-4 pl-6">
-                        <p className="font-bold text-gray-800">{student.full_name}</p>
-                        <div className="flex flex-col items-start gap-1.5 mt-0.5">
-                          <p className="text-sm text-gray-500 font-medium">{student.uid}</p>
-                          {/* ✨ NEW: Academic Badge */}
-                          {student.branch && (
-                            <span className="text-xs text-blue-700 font-bold bg-blue-50 px-2 py-0.5 rounded border border-blue-100 uppercase tracking-wider">
-                              🎓 {student.branch} • {student.batch}
+              ) : (
+                filteredRecentLogs.map((log) => (
+                  <tr key={log.id} className="hover:bg-blue-50/50 transition-colors">
+                    <td className="px-6 py-4">
+                      <p className="font-bold text-gray-800">{log.full_name || "Unknown"}</p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-sm text-gray-500 font-medium">{log.uid}</span>
+                        {log.room_no && (
+                          <>
+                            <span className="text-gray-300">•</span>
+                            <span className="text-xs font-bold text-gray-600 bg-gray-100 px-1.5 py-0.5 rounded border border-gray-200">
+                              🚪 {log.room_no}
                             </span>
-                          )}
-                        </div>
-                      </td>
-                      
-                      {/* POLISHED ROOM NUMBER BADGE */}
-                      <td className="p-4">
-                        {student.room_no ? (
-                          <span className="bg-gray-100 text-gray-700 font-bold px-2.5 py-1 rounded-md text-sm border border-gray-200 whitespace-nowrap">
-                            {student.room_no}
-                          </span>
-                        ) : (
-                          <span className="text-gray-400 text-sm italic">N/A</span>
+                            <span className="text-xs text-gray-500 font-medium hidden md:inline-block">
+                              {log.branch} ({log.batch})
+                            </span>
+                          </>
                         )}
-                      </td>
-
-                      <td className="p-4 text-sm text-gray-600 font-medium whitespace-nowrap">{student.phone_no || 'N/A'}</td>
-                      <td className="p-4 text-sm text-gray-500 max-w-xs truncate" title={student.address}>{student.address || 'N/A'}</td>
-                      <td className="p-4 pr-6 text-right">
-                        <button 
-                          className="bg-green-50 hover:bg-green-600 text-green-700 hover:text-white border border-green-200 px-4 py-2 rounded-lg text-sm font-bold transition-all active:scale-95 whitespace-nowrap" 
-                          onClick={() => checkinOverride(student.uid)}
-                        >
-                          Force Check-In
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={`px-2.5 py-1 rounded-md text-xs font-black uppercase tracking-wider ${
+                        log.status === 'out' ? 'bg-orange-100 text-orange-700 border border-orange-200' : 'bg-green-100 text-green-700 border border-green-200'
+                      }`}>
+                        {log.status === 'out' ? 'Checked Out' : 'Returned'}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-1.5 text-sm font-bold text-gray-700">
+                          <Clock size={14} className="text-gray-400" />
+                          {new Date(log.exit_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                        <div className="text-sm text-gray-400 mt-1 font-medium pl-5">
+                          {new Date(log.exit_time).toLocaleDateString()}
+                        </div>
+                    </td>
+                    <td className="px-6 py-4 max-w-xs">
+                      <p className="text-sm font-bold text-gray-800 truncate">{log.destination || 'N/A'}</p>
+                      <p className="text-sm text-gray-500 truncate mt-0.5">{log.reason}</p>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
-    )}
-  </div>
-  );
-};
-  </div>
+
+      {/* --- STUDENTS OUT MODAL --- */}
+      {showOutModal && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm p-4 animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl overflow-hidden animate-slide-up flex flex-col max-h-[85vh]">
+            
+            <div className="bg-gradient-to-r from-red-600 to-red-700 p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 text-white">
+              <div>
+                <h3 className="font-black text-xl flex items-center gap-2">
+                  <AlertTriangle size={20} /> Active Absences
+                </h3>
+                <p className="text-red-200 text-sm mt-1">Students currently off-campus</p>
+              </div>
+              
+              <div className="flex items-center gap-4 w-full md:w-auto">
+                <div className="relative w-full md:w-64">
+                    <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                    <input 
+                        type="text" 
+                        placeholder="Search by Name, Room, UID or branch..." 
+                        value={absentSearch}
+                        onChange={(e) => setAbsentSearch(e.target.value)}
+                        className="text-black w-full pl-9 pr-4 py-2 bg-white rounded-lg text-sm outline-none focus:ring-2 focus:ring-red-300 transition shadow-sm"
+                    />
+                </div>
+                <button 
+                  onClick={() => {setShowOutModal(false); setAbsentSearch('');}} 
+                  className="hover:bg-red-800 p-2 rounded-lg transition-colors bg-red-700/50 shrink-0"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-0 bg-gray-50">
+              {filteredOutStudents.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-64 text-gray-400">
+                  <div className="bg-green-100 text-green-600 p-4 rounded-full mb-3"><Users size={32}/></div>
+                  <p className="font-bold text-gray-600">No Data</p>
+                  <p className="text-sm mt-1">No student info found.</p>
+                </div>
+              ) : (
+                <table className="w-full text-left border-collapse">
+                  <thead className="bg-white sticky top-0 shadow-sm z-10">
+                    <tr className="border-b border-gray-200 text-sm font-bold text-gray-400 uppercase tracking-wider">
+                      <th className="p-4 pl-6">Student Details</th>
+                      <th className="p-4">Room No.</th>
+                      <th className="p-4">Phone No.</th>
+                      <th className="p-4">Home Address</th>
+                      <th className="p-4 pr-6 text-right">Emergency Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 bg-white">
+                    {filteredOutStudents.map((student) => (
+                      <tr key={student.uid} className="hover:bg-red-50/30 transition-colors">
+                        <td className="p-4 pl-6">
+                          <p className="font-bold text-gray-800">{student.full_name}</p>
+                          <div className="flex flex-col items-start gap-1.5 mt-0.5">
+                            <p className="text-sm text-gray-500 font-medium">{student.uid}</p>
+                            {/* ✨ NEW: Academic Badge */}
+                            {student.branch && (
+                              <span className="text-xs text-blue-700 font-bold bg-blue-50 px-2 py-0.5 rounded border border-blue-100 uppercase tracking-wider">
+                                🎓 {student.branch} • {student.batch}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        
+                        {/* POLISHED ROOM NUMBER BADGE */}
+                        <td className="p-4">
+                          {student.room_no ? (
+                            <span className="bg-gray-100 text-gray-700 font-bold px-2.5 py-1 rounded-md text-sm border border-gray-200 whitespace-nowrap">
+                              {student.room_no}
+                            </span>
+                          ) : (
+                            <span className="text-gray-400 text-sm italic">N/A</span>
+                          )}
+                        </td>
+
+                        <td className="p-4 text-sm text-gray-600 font-medium whitespace-nowrap">{student.phone_no || 'N/A'}</td>
+                        <td className="p-4 text-sm text-gray-500 max-w-xs truncate" title={student.address}>{student.address || 'N/A'}</td>
+                        <td className="p-4 pr-6 text-right">
+                          <button 
+                            className="bg-green-50 hover:bg-green-600 text-green-700 hover:text-white border border-green-200 px-4 py-2 rounded-lg text-sm font-bold transition-all active:scale-95 whitespace-nowrap" 
+                            onClick={() => checkinOverride(student.uid)}
+                          >
+                            Force Check-In
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 };
 
@@ -630,7 +496,6 @@ const GrievancesTab = () => {
   const [searchTerm, setSearchTerm] = useState('');
 
   const [evidenceModal, setEvidenceModal] = useState(null);
-  const [isLocked, setIsLocked] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
 
   useEffect(() => {
@@ -659,7 +524,6 @@ const GrievancesTab = () => {
         toast.success(`Status updated to ${newStatus}`);
       }
     } catch (err) {
-      toast.error("Failed to update status");
       toast.error("Failed to update status");
       fetchGrievances(); 
     }
@@ -842,9 +706,6 @@ const GrievancesTab = () => {
       case 'Pending': return 'bg-orange-50 text-orange-700 border-orange-200';
       case 'Assigned': return 'bg-blue-50 text-blue-700 border-blue-200';
       case 'Resolved': return 'bg-green-50 text-green-700 border-green-200';
-      case 'Pending': return 'bg-orange-50 text-orange-700 border-orange-200';
-      case 'Assigned': return 'bg-blue-50 text-blue-700 border-blue-200';
-      case 'Resolved': return 'bg-green-50 text-green-700 border-green-200';
       default: return 'bg-gray-50 text-gray-600';
     }
   };
@@ -857,14 +718,10 @@ const GrievancesTab = () => {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in">
         <div className="relative bg-white rounded-2xl overflow-hidden max-w-4xl w-full shadow-2xl animate-slide-up">
-        <div className="relative bg-white rounded-2xl overflow-hidden max-w-4xl w-full shadow-2xl animate-slide-up">
           <div className="flex justify-between items-center p-4 border-b border-gray-100 bg-gray-50">
             <h3 className="font-bold text-gray-700 flex items-center gap-2"><ImageIcon size={18}/> Evidence Review</h3>
             <button onClick={() => setEvidenceModal(null)} className="p-2 bg-white rounded-full hover:bg-gray-200 transition text-gray-500"><X size={20} /></button>
-            <h3 className="font-bold text-gray-700 flex items-center gap-2"><ImageIcon size={18}/> Evidence Review</h3>
-            <button onClick={() => setEvidenceModal(null)} className="p-2 bg-white rounded-full hover:bg-gray-200 transition text-gray-500"><X size={20} /></button>
           </div>
-          <div className="p-0 bg-black flex justify-center items-center min-h-[400px]">
           <div className="p-0 bg-black flex justify-center items-center min-h-[400px]">
             {isVideo ? (
               <video src={`${SERVER_URL}${evidenceModal}`} controls autoPlay className="max-h-[70vh] w-full" />
@@ -893,49 +750,13 @@ const GrievancesTab = () => {
       
       {/* HEADER */}
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-6 gap-4">
-
-      {isLocked && (
-        <div className="fixed inset-0 z-[40] bg-black/10 backdrop-blur-[2px] cursor-not-allowed" />
-      )}
-      
-      {/* HEADER */}
-      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-6 gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Grievances</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            {viewMode === 'active' ? 'Manage active campus complaints.' : 'Review resolved complaint history.'}
           <p className="text-sm text-gray-500 mt-1">
             {viewMode === 'active' ? 'Manage active campus complaints.' : 'Review resolved complaint history.'}
           </p>
         </div>
         
-        {/* VIEW TOGGLE */}
-        <div className="bg-gray-100 p-1 rounded-xl flex w-full lg:w-auto">
-          <button 
-            onClick={() => setViewMode('active')}
-            className={`flex-1 lg:flex-none px-6 py-2 rounded-lg text-sm font-bold transition-all ${
-              viewMode === 'active' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            Active Complaints
-          </button>
-          <button 
-            onClick={() => setViewMode('history')}
-            className={`flex-1 lg:flex-none px-6 py-2 rounded-lg text-sm font-bold transition-all ${
-              viewMode === 'history' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            Resolved History
-          </button>
-        </div>
-      </div>
-
-      {/* TOOLBAR */}
-      <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 mb-6 flex flex-col md:flex-row gap-3 items-center justify-between">
-        <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
-          {/* Search */}
-          <div className="relative w-full sm:w-64">
-            <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
         {/* VIEW TOGGLE */}
         <div className="bg-gray-100 p-1 rounded-xl flex w-full lg:w-auto">
           <button 
@@ -969,7 +790,6 @@ const GrievancesTab = () => {
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 transition shadow-sm"
-              className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 transition shadow-sm"
             />
           </div>
           
@@ -993,12 +813,9 @@ const GrievancesTab = () => {
           {viewMode === 'active' && (
             <div className="relative w-full sm:w-auto">
               <ListFilter size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-            <div className="relative w-full sm:w-auto">
-              <ListFilter size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
               <select 
                 value={filterStatus}
                 onChange={(e) => setFilterStatus(e.target.value)}
-                className="w-full sm:w-auto pl-9 pr-8 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer appearance-none shadow-sm"
                 className="w-full sm:w-auto pl-9 pr-8 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer appearance-none shadow-sm"
               >
                 <option value="All">All Status</option>
@@ -1026,11 +843,9 @@ const GrievancesTab = () => {
             <button 
               onClick={handleResolveAll}
               className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2 bg-green-600 text-white rounded-lg text-sm font-bold shadow-md hover:bg-green-700 active:scale-95 transition"
-              className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2 bg-green-600 text-white rounded-lg text-sm font-bold shadow-md hover:bg-green-700 active:scale-95 transition"
               title="Resolve all currently visible complaints"
             >
               <CheckCircle size={16} /> 
-              <span>Resolve All ({filteredGrievances.length})</span>
               <span>Resolve All ({filteredGrievances.length})</span>
             </button>
           )}
@@ -1042,17 +857,10 @@ const GrievancesTab = () => {
             >
               <Trash2 size={16} /> Wipe History
             </button>
-            <button 
-              onClick={handleClearHistory}
-              className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2 bg-red-50 text-red-600 border border-red-200 rounded-lg text-sm font-bold hover:bg-red-100 hover:border-red-300 transition active:scale-95"
-            >
-              <Trash2 size={16} /> Wipe History
-            </button>
           )}
         </div>
       </div>
 
-      {/* COMPLAINTS LIST */}
       {/* COMPLAINTS LIST */}
       <div className="space-y-4">
         {filteredGrievances.length === 0 ? (
@@ -1062,16 +870,9 @@ const GrievancesTab = () => {
              </div>
              <p className="text-gray-800 font-bold text-lg">Inbox Zero</p>
              <p className="text-gray-400 font-medium text-sm mt-1">No {viewMode} grievances match your filters.</p>
-          <div className="flex flex-col items-center justify-center py-20 bg-gray-50/50 rounded-2xl border border-gray-200 border-dashed">
-             <div className="bg-white p-4 rounded-full shadow-sm mb-4">
-                <CheckCircle size={32} className="text-green-500" />
-             </div>
-             <p className="text-gray-800 font-bold text-lg">Inbox Zero</p>
-             <p className="text-gray-400 font-medium text-sm mt-1">No {viewMode} grievances match your filters.</p>
           </div>
         ) : (
           filteredGrievances.map((g) => (
-            <div key={g.id} className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm flex flex-col md:flex-row gap-6 hover:shadow-md transition group">
             <div key={g.id} className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm flex flex-col md:flex-row gap-6 hover:shadow-md transition group">
               
               {/* User Info Column */}
@@ -1151,15 +952,10 @@ const GrievancesTab = () => {
                 
                 {/* Timestamps & Evidence */}
                 <div className="flex gap-6 items-end border-t border-gray-100 pt-4 mt-2">
-                {/* Timestamps & Evidence */}
-                <div className="flex gap-6 items-end border-t border-gray-100 pt-4 mt-2">
                   <div>
                     <p className="text-sm uppercase font-bold text-gray-400 mb-1">Logged On</p>
                     <div className="flex items-center gap-1.5 text-gray-700">
-                    <p className="text-sm uppercase font-bold text-gray-400 mb-1">Logged On</p>
-                    <div className="flex items-center gap-1.5 text-gray-700">
                       <Clock size={14} className="text-gray-400"/>
-                      <span className="text-sm font-bold">
                       <span className="text-sm font-bold">
                         {new Date(g.date_logged).toLocaleDateString()}
                       </span>
@@ -1170,13 +966,10 @@ const GrievancesTab = () => {
                     <div>
                       <p className="text-sm uppercase font-bold text-green-600 mb-1">Resolved On</p>
                       <div className="flex items-center gap-1.5 text-green-700">
-                      <p className="text-sm uppercase font-bold text-green-600 mb-1">Resolved On</p>
-                      <div className="flex items-center gap-1.5 text-green-700">
                         <CheckCircle size={14} />
                         <span className="text-sm font-bold">
                           {new Date(g.date_resolved).toLocaleDateString()}
                         </span>
-                        <span className="text-sm text-green-600 font-bold ml-1">
                         <span className="text-sm text-green-600 font-bold ml-1">
                           {new Date(g.date_resolved).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                         </span>
@@ -1189,14 +982,10 @@ const GrievancesTab = () => {
                       <button 
                         onClick={() => setEvidenceModal(g.img_url)}
                         className="h-9 px-3 bg-blue-50 hover:bg-blue-600 hover:text-white text-blue-600 rounded-lg border border-blue-200 flex items-center gap-2 transition-all text-sm font-bold shadow-sm"
-                        className="h-9 px-3 bg-blue-50 hover:bg-blue-600 hover:text-white text-blue-600 rounded-lg border border-blue-200 flex items-center gap-2 transition-all text-sm font-bold shadow-sm"
                       >
-                        {g.img_url.endsWith('.mp4') ? <><FileVideo size={16} /> View Video</> : <><ImageIcon size={16} /> View Photo</>}
                         {g.img_url.endsWith('.mp4') ? <><FileVideo size={16} /> View Video</> : <><ImageIcon size={16} /> View Photo</>}
                       </button>
                     ) : (
-                      <div className="h-9 px-3 bg-gray-50 rounded-lg border border-gray-200 flex items-center gap-2 text-gray-400 cursor-not-allowed text-sm font-bold">
-                        <ImageIcon size={16} /> No Evidence
                       <div className="h-9 px-3 bg-gray-50 rounded-lg border border-gray-200 flex items-center gap-2 text-gray-400 cursor-not-allowed text-sm font-bold">
                         <ImageIcon size={16} /> No Evidence
                       </div>
@@ -1296,7 +1085,7 @@ const StudentMgmtTab = () => {
       .finally(() => setLoading(false));
   };
 
-const handleStudentCSVUpload = async (e) => {
+  const handleStudentCSVUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
@@ -1330,7 +1119,6 @@ const handleStudentCSVUpload = async (e) => {
 
   const downloadTemplate = () => {
     const headers = "uid,full_name,dob,phone_no,address,room_no,batch,branch\n";
-
     const dummyData = "u2303004,Abhijith sreegith krishna,18-05-2005,9074907104,123 Campus Hostel,E-27,2023-27,CSE\n";
     
     const blob = new Blob([headers + dummyData], { type: 'text/csv' });
@@ -1367,20 +1155,12 @@ const handleStudentCSVUpload = async (e) => {
         error: 'Failed to update details.',
       }
     ).then(() => {
-    toast.promise(
-      axios.put(`http://localhost:3001/api/warden/students/${editingId}`, editForm),
-      {
-        loading: 'Saving changes...',
-        success: 'Student details updated!',
-        error: 'Failed to update details.',
-      }
-    ).then(() => {
       setStudents(students.map(s => s.uid === editingId ? { ...editForm, checkout_count: s.checkout_count } : s));
       setEditingId(null);
     });
   };
 
-// Converts standard DB date into readable text for the table
+  // Converts standard DB date into readable text for the table
   const formatDOB = (dobString) => {
     if (!dobString) return "N/A";
     const date = new Date(dobString);
@@ -1392,26 +1172,10 @@ const handleStudentCSVUpload = async (e) => {
 
   // Dynamically extract unique batches and branches from the data for the dropdowns
   const uniqueBatches = [...new Set(students.map(s => s.batch).filter(Boolean))].sort();
-  // const uniqueBranches = [...new Set(students.map(s => s.branch).filter(Boolean))].sort();
 
-  // Filter Logic now handles
+  // Filter Logic
   const filteredStudents = students.filter(s => {
     const term = searchTerm.toLowerCase();
-    
-    // 1. Text Search
-    const matchSearch = (
-      (s.full_name || '').toLowerCase().includes(term) ||
-      (s.uid || '').toLowerCase().includes(term) ||
-      (s.room_no || '').toLowerCase().includes(term) ||
-      (s.batch || '').toLowerCase().includes(term) ||
-      (s.branch || '').toLowerCase().includes(term)
-    );
-
-    // 2. Dropdown Filters
-    const matchBatch = filterBatch === 'All' ? true : s.batch === filterBatch;
-    const matchBranch = filterBranch === 'All' ? true : s.branch === filterBranch;
-
-    return matchSearch && matchBatch && matchBranch;
     
     // 1. Text Search
     const matchSearch = (
@@ -1431,7 +1195,6 @@ const handleStudentCSVUpload = async (e) => {
 
   return (
     <div className="animate-fade-in p-2 sm:p-6">
-    <div className="animate-fade-in p-2 sm:p-6">
       
       {/* HEADER & ACTIONS */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
@@ -1439,7 +1202,6 @@ const handleStudentCSVUpload = async (e) => {
         {/* LEFT: Title & Counter */}
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Student Registry</h1>
-          <p className="text-sm text-gray-500 mt-1">Manage {students.length} active residents</p>
           <p className="text-sm text-gray-500 mt-1">Manage {students.length} active residents</p>
         </div>
 
@@ -1553,7 +1315,6 @@ const handleStudentCSVUpload = async (e) => {
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead className="bg-gray-50 text-xs font-bold text-gray-500 uppercase tracking-wider border-b border-gray-200">
-            <thead className="bg-gray-50 text-xs font-bold text-gray-500 uppercase tracking-wider border-b border-gray-200">
               <tr>
                 <th className="px-6 py-4">Student Profile</th>
                 <th className="px-6 py-4">Room & Address</th>
@@ -1602,7 +1363,6 @@ const handleStudentCSVUpload = async (e) => {
                               />
                               {/* Inline Edit inputs for Branch & Batch */}
                               <div className="flex gap-2">
-                                {/* Fixed: Removed label, updated state to editForm, matched CSS styling */}
                                 <select 
                                   required 
                                   value={editForm.branch || ''} 
@@ -1633,7 +1393,7 @@ const handleStudentCSVUpload = async (e) => {
                               <p className="font-bold text-gray-800">{s.full_name}</p>
                               <p className="text-sm text-gray-500 font-medium">{s.uid}</p>
                               
-                              {/*  Academic Pills */}
+                              {/* Academic Pills */}
                               <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
                                 {s.branch && (
                                   <span className="px-2 py-0.5 bg-purple-50 text-purple-700 rounded text-[10px] font-black uppercase tracking-wider border border-purple-100">
@@ -1673,7 +1433,6 @@ const handleStudentCSVUpload = async (e) => {
                                 rows={2}
                                 placeholder="Home Address"
                               />
-                              {/* The missing DOB Calendar Input! */}
                               <div className="flex items-center gap-2">
                                 <Calendar size={14} className="text-gray-400 shrink-0" />
                                 <input 
@@ -1714,20 +1473,6 @@ const handleStudentCSVUpload = async (e) => {
                           </span>
                        </div>
                     </td>
-                    {/* COL 3: STATS */}
-                    <td className="px-6 py-4">
-                       <div className="flex flex-col gap-1.5">
-                          <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Gate Activity</span>
-                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold w-fit border ${
-                            s.checkout_count >= 10 
-                              ? 'bg-orange-50 text-orange-700 border-orange-200' 
-                              : 'bg-green-50 text-green-700 border-green-200'
-                          }`}>
-                             <Shield size={14} /> 
-                             {s.checkout_count || 0} {s.checkout_count === 1 ? 'Exit' : 'Exits'}
-                          </span>
-                       </div>
-                    </td>
 
                     {/* COL 4: ACTIONS */}
                     <td className="px-6 py-4 text-right">
@@ -1747,7 +1492,16 @@ const handleStudentCSVUpload = async (e) => {
                               >
                                   <Save size={14} /> Save
                               </button>
-
+                          </div>
+                      ) : (
+                          <div className="flex justify-end gap-2">
+                            <button 
+                              onClick={() => startEdit(s)} 
+                              className="p-2 text-gray-400 hover:bg-blue-50 hover:text-blue-600 rounded-lg transition-colors border border-transparent hover:border-blue-100"
+                              title="Edit Student"
+                            >
+                               <Edit2 size={16} />
+                            </button>
                             <button 
                               onClick={() => handleDelete(s)} 
                               className="p-2 text-gray-400 hover:bg-red-50 hover:text-red-600 rounded-lg transition-colors border border-transparent hover:border-red-100"
@@ -1756,20 +1510,9 @@ const handleStudentCSVUpload = async (e) => {
                                <Trash2 size={16} />
                             </button>
                           </div>
-                      ) : (
-                          <button 
-                            onClick={() => startEdit(s)} 
-                            className="p-2 text-gray-400 hover:bg-blue-50 hover:text-blue-600 rounded-lg transition-colors border border-transparent hover:border-blue-100"
-                            title="Edit Student"
-                          >
-                             <Edit2 size={16} />
-                          </button>
                       )}
                     </td>
 
-                  </tr>
-                ))
-              )}
                   </tr>
                 ))
               )}
@@ -1777,6 +1520,7 @@ const handleStudentCSVUpload = async (e) => {
           </table>
         </div>
       </div>
+      
       {isLocked && <div className="fixed inset-0 z-[999] bg-black/10 backdrop-blur-[2px] cursor-not-allowed" />}
 
       {showAddModal && (
@@ -1820,7 +1564,6 @@ const handleStudentCSVUpload = async (e) => {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-gray-500 mb-1 uppercase tracking-wider">Branch *</label>
-                  {/* ✨ Replaced text input with a locked Dropdown */}
                   <select 
                     required 
                     value={newStudent.branch} 
@@ -1839,7 +1582,6 @@ const handleStudentCSVUpload = async (e) => {
                 </div>
               </div>
 
-              {/* ✨ NEW: Required Address Field */}
               <div>
                 <label className="block text-xs font-bold text-gray-500 mb-1 uppercase tracking-wider">Address *</label>
                 <textarea required value={newStudent.address} onChange={e => setNewStudent({...newStudent, address: e.target.value})} placeholder="Home Address" rows={2} className="w-full px-3 py-2 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-none"/>
@@ -1866,7 +1608,6 @@ const handleStudentCSVUpload = async (e) => {
             
             <div className="p-6 space-y-5 text-sm text-gray-600">
               
-              {/* ✨ NEW: Professional Validation Warning Box */}
               <div className="bg-orange-50 border border-orange-200 p-4 rounded-xl">
                 <p className="font-bold text-orange-800 flex items-center gap-2 mb-1.5">
                   <AlertOctagon size={16} /> Data Integrity Protocol
@@ -1931,7 +1672,6 @@ const handleStudentCSVUpload = async (e) => {
     </div>
   );
 };
-
 
 const DashboardHome = ({setActiveTab}) => {
   const [stats, setStats] = useState({
@@ -2082,8 +1822,8 @@ const DashboardHome = ({setActiveTab}) => {
   );
 };
 
-const MenuTab = () =>{
-    // --- STATE ---
+const MenuTab = () => {
+  // --- STATE ---
   const [weeklyMenu, setWeeklyMenu] = useState([]);
   const [catalog, setCatalog] = useState([]);
 
@@ -2091,27 +1831,21 @@ const MenuTab = () =>{
   const [catalogDietFilter, setCatalogDietFilter] = useState('All');
   const [catalogSort, setCatalogSort] = useState('name');
 
-// Change the dummy data to empty 24-hour formats
   const [mealTimings, setMealTimings] = useState({
     Breakfast: { start: '00:00', end: '00:00' },
     Lunch: { start: '00:00', end: '00:00' },
     Dinner: { start: '00:00', end: '00:00' }
   });
-  const [uploading, setUploading] = useState(false);
-
-  const [uploading, setUploading] = useState(false);
-
   
-  // Add a new state for the Time Editor Modal
-  const [timeEditModal, setTimeEditModal] = useState(null); // Will hold { meal: 'Breakfast', start: '07:30', end: '09:30' }
+  const [uploading, setUploading] = useState(false);
+  const [timeEditModal, setTimeEditModal] = useState(null); 
   
   // --- MODAL STATES ---
   const [ShowCatalogModal, setShowCatalogModal] = useState(false);
-  const [assignModalData, setAssignModalData] = useState(null); // Will hold { dateString, mealType } when a grid slot is clicked
+  const [assignModalData, setAssignModalData] = useState(null); 
   const [showAIModal, setShowAIModal] = useState(false);
   
-
-  // ✨ NEW: Inline Editing State
+  // Inline Editing State
   const [editingDishId, setEditingDishId] = useState(null);
   const [editDishForm, setEditDishForm] = useState({});
 
@@ -2121,7 +1855,6 @@ const MenuTab = () =>{
 
   const [aiLoading, setAiLoading] = useState(false);
   const [aiPrompt, setAiPrompt] = useState('');
-  const abortControllerRef = useRef(null);
   const abortControllerRef = useRef(null);
 
   // --- FORM STATES ---
@@ -2134,14 +1867,12 @@ const MenuTab = () =>{
     e.preventDefault();
     if (!selectedDishId) return toast.error("Please select a dish!");
     
-    //  The strict 2 item bouncer
     const existingDishesInSlot = getDishesForSlot(assignModalData.dateString, assignModalData.mealType);
     if (existingDishesInSlot.length >= 2) {
       toast.error(`Maximum 2 dishes allowed for ${assignModalData.mealType}.`);
       return; 
     }
 
-    // Find the full dish details from the catalog so the UI renders it instantly
     const dishObj = catalog.find(d => d.id === parseInt(selectedDishId));
     
     const newEntry = {
@@ -2156,7 +1887,6 @@ const MenuTab = () =>{
       effort_score: dishObj.effort_score
     };
 
-    // Update the UI state instantly, NO DATABASE CALL
     setWeeklyMenu(prev => [...prev, newEntry]);
     setAssignModalData(null); 
     setSelectedDishId(''); 
@@ -2191,7 +1921,6 @@ const MenuTab = () =>{
   };
 
   const handleDeleteFromCatalog = (dishId, dishName) => {
-    // ✨ NEW: Check if this dish is currently attached to any schedules!
     const dish = catalog.find(d => d.id === dishId);
     const isCurrentlyScheduled = dish && dish.served_meals;
 
@@ -2202,7 +1931,6 @@ const MenuTab = () =>{
           <p className="font-bold text-sm">Confirm Deletion of {dishName}?</p>
         </div>
         
-        {/* ✨ DYNAMIC WARNING MESSAGE */}
         {isCurrentlyScheduled ? (
           <div className="bg-red-50 p-3 rounded-lg border border-red-200">
             <p className="text-xs font-bold text-red-700 flex items-center gap-1 mb-1">
@@ -2229,10 +1957,9 @@ const MenuTab = () =>{
     ), { id: `delete-dish-${dishId}`, duration: Infinity });
   };
    
-  // --- INLINE EDIT LOGIC ---
   const handleEditClick = (dish) => {
     setEditingDishId(dish.id);
-    setEditDishForm({ ...dish }); // Load current dish data into the form
+    setEditDishForm({ ...dish });
   };
 
   const handleCancelEdit = () => {
@@ -2248,14 +1975,14 @@ const MenuTab = () =>{
         loading: 'Saving changes...',
         success: () => {
           setEditingDishId(null);
-          fetchCatalog(); // Refresh the grid to show updates
+          fetchCatalog(); 
           return 'Dish updated successfully!';
         },
         error: (err) => err.response?.data?.error || "Failed to update dish."
       }
     );
   };
-  // --- BULK DELETE CATALOG LOGIC ---
+
   const executeBulkDeleteCatalog = async (dishesToDelete) => {
     toast.promise(
       Promise.all(dishesToDelete.map(d => axios.delete(`http://localhost:3001/api/admin/menu-catalog/${d.id}`))),
@@ -2326,7 +2053,6 @@ const MenuTab = () =>{
     ), { id: 'publish-week', duration: Infinity });
   };
 
-  //bulk csv upload
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -2353,7 +2079,6 @@ const MenuTab = () =>{
     });
   };
 
-  // --- UPLOAD WEEKLY SCHEDULE CSV ---
   const handleScheduleCSVUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -2377,8 +2102,6 @@ const MenuTab = () =>{
       }
 
       const uploadedDates = [...new Set(rows.map(rowStr => rowStr.split(',')[dateIdx].trim()))];
-      
-      // Figure out exactly what days the Warden is looking at right now
       const currentVisibleDates = weekDays.map(d => d.dateString);
 
       const draftMenu = weeklyMenu.filter(m => {
@@ -2390,7 +2113,7 @@ const MenuTab = () =>{
       let limitErrors = 0;
       let newItemsCount = 0;
       let addedCount = 0;
-      let hiddenCount = 0; // Track off-screen meals
+      let hiddenCount = 0; 
 
       rows.forEach((rowStr, index) => {
         const row = rowStr.split(',').map(v => v.trim());
@@ -2403,7 +2126,6 @@ const MenuTab = () =>{
         const cost = costIdx !== -1 ? (parseInt(row[costIdx]) || 0) : 0;
         const effortScore = effortIdx !== -1 ? (parseInt(row[effortIdx]) || 5) : 5;
 
-        // GUARDRAILS
         if (!/(&|\+|\band\b)/i.test(dishName)) {
           comboErrors++;
           return;
@@ -2434,7 +2156,6 @@ const MenuTab = () =>{
         addedCount++;
         if (!existingDish) newItemsCount++;
         
-        // if scheduled a meal for a week the Warden isn't looking at?
         if (!currentVisibleDates.includes(serveDate)) {
           hiddenCount++;
         }
@@ -2442,7 +2163,6 @@ const MenuTab = () =>{
 
       setWeeklyMenu(draftMenu);
 
-      //  UPGRADED Dynamic Toast Reporting
       const visibilityMsg = hiddenCount > 0 
         ? `\nNote: ${hiddenCount} meals are scheduled for a different week. Navigate to those dates to see them.` 
         : "";
@@ -2463,20 +2183,16 @@ const MenuTab = () =>{
   };
   
   const handleRemoveDish = (scheduleId, dishName) => {
-    // Just filter it out of the local React state, NO DATABASE CALL
     setWeeklyMenu(prev => prev.filter(dish => dish.schedule_id !== scheduleId));
   };
 
-  
-  // Track the start of the currently viewed week (Defaults to this week's Monday)
   const [weekStart, setWeekStart] = useState(() => {
     const d = new Date();
-    const day = d.getDay(); // 0 = Sunday, 1 = Monday, etc.
-    const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Adjust when day is Sunday
+    const day = d.getDay(); 
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1); 
     return new Date(d.setDate(diff));
   });
 
-  // Select past or next menu schedule
   const handlePrevWeek = () => {
     setWeekStart(prev => {
       const d = new Date(prev);
@@ -2493,7 +2209,6 @@ const MenuTab = () =>{
     });
   };
 
-  // CLEAR CURRENT WEEK (DRAFT) 
   const handleClearWeek = () => {
     if (weeklyMenu.length === 0) {
       toast.error("The grid is already empty!");
@@ -2511,7 +2226,7 @@ const MenuTab = () =>{
           <button onClick={() => toast.dismiss(t.id)} className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-sm font-bold hover:bg-gray-200 transition">Cancel</button>
           <button onClick={() => { 
             toast.dismiss(t.id); 
-            setWeeklyMenu([]); // ✨ Instantly wipes the local grid state!
+            setWeeklyMenu([]); 
             toast.success("Grid cleared! Click Publish to save these changes.");
           }} className="px-3 py-1.5 bg-red-600 text-white rounded-lg text-sm font-bold hover:bg-red-700 transition">Clear Grid</button>
         </div>
@@ -2519,27 +2234,22 @@ const MenuTab = () =>{
     ), { id: 'clear-week', duration: Infinity });
   };
 
-  // Get "Today" formatted exactly like the database (YYYY-MM-DD)
-  // For example, today will format as "2026-03-02"
   const todayString = new Date().toLocaleDateString('en-CA');
 
-  // --- HELPER: GENERATE THE 7 DAYS ---
-  // This creates an array of 7 objects for the grid rows based on weekStart
   const weekDays = Array.from({ length: 7 }).map((_, i) => {
     const date = new Date(weekStart);
     date.setDate(date.getDate() + i);
     return {
       dayName: date.toLocaleDateString('en-US', { weekday: 'long' }),
-      dateString: date.toLocaleDateString('en-CA') // YYYY-MM-DD
+      dateString: date.toLocaleDateString('en-CA') 
     };
   });
 
-  // --- DATA FETCHING ---
   useEffect(() => {
     fetchCatalog();
     fetchWeeklyMenu();
     fetchTimings();
-  }, [weekStart]); // Re-fetch if the Warden clicks to the next/prev week
+  }, [weekStart]); 
 
   const fetchCatalog = async () => {
     try {
@@ -2561,7 +2271,6 @@ const MenuTab = () =>{
     }
   };
 
-  // Helper to find a specific dish in our fetched data
   const getDishesForSlot = (date, mealType) => {
     return weeklyMenu.filter(m => m.serve_date === date && m.meal_type === mealType);  
   };
@@ -2583,8 +2292,8 @@ const MenuTab = () =>{
         start_time: timeEditModal.start,
         end_time: timeEditModal.end
       });
-      fetchTimings(); // Refresh the headers to show the new times
-      setTimeEditModal(null); // Close modal
+      fetchTimings(); 
+      setTimeEditModal(null); 
     } catch (err) {
       console.error("Error updating time:", err);
       alert("Failed to update timing.");
@@ -2592,10 +2301,7 @@ const MenuTab = () =>{
   };
 
   const ask_ai = async () => {
-  const ask_ai = async () => {
     setAiLoading(true);
-    abortControllerRef.current = new AbortController();
-
     abortControllerRef.current = new AbortController();
 
     try {
@@ -2609,16 +2315,15 @@ const MenuTab = () =>{
       
       const populatedMenu = res.data.proposed_menu.map((item, index) => {
         
-        // 🌟 SCENARIO A: The AI invented a brand new dish!
         if (item.is_new_creation) {
            return {
               schedule_id: `temp_new_ai_${Date.now()}_${index}`,
               serve_date: item.serve_date,
               meal_type: item.meal_type,
-              dish_id: null, // No DB ID yet!
-              is_new_creation: true, // Tells the backend to insert this on save
+              dish_id: null, 
+              is_new_creation: true, 
               status: 'AI Draft', 
-              is_new_recipe_badge: true, // Custom UI flag for our special badge
+              is_new_recipe_badge: true, 
               dish_name: item.dish_name,
               diet_type: item.diet_type,
               cost: item.cost || 0,
@@ -2626,7 +2331,6 @@ const MenuTab = () =>{
            };
         }
 
-        // 🍔 SCENARIO B: It's an existing dish from the catalog
         const dishObj = catalog.find(d => d.id === parseInt(item.dish_id));
         if (!dishObj) return null;
         
@@ -2644,7 +2348,6 @@ const MenuTab = () =>{
         };
       }).filter(Boolean);
 
-      // Overwrite the current week with the AI's draft
       setWeeklyMenu(populatedMenu);
       setShowAIModal(false);
       toast.success("AI draft generated! Review the new recipes and click Publish to lock them in.");      
@@ -2659,7 +2362,6 @@ const MenuTab = () =>{
     }
   }
 
-  // Helper to make 24hr time look nice in the table header (e.g., 14:30 -> 2:30 PM)
   const format12Hour = (time24) => {
     if (!time24 || time24 === '00:00') return '';
     const [h, m] = time24.split(':');
@@ -2669,12 +2371,8 @@ const MenuTab = () =>{
     return `${displayHours}:${m} ${suffix}`;
   };
 
-  // 🧮 Automatically calculate totals ONLY for the visible week
   const weeklyMetrics = useMemo(() => {
-    // ✨ NEW: Figure out which dates are currently on the screen
     const currentVisibleDates = weekDays.map(d => d.dateString);
-
-    // ✨ NEW: Filter the menu down to ONLY the meals in this specific week
     const visibleMeals = weeklyMenu.filter(meal => {
       const mealDate = meal.serve_date.split('T')[0];
       return currentVisibleDates.includes(mealDate);
@@ -2693,19 +2391,16 @@ const MenuTab = () =>{
       totalC += Number(meal.cost) || 0;
       totalE += Number(meal.effort_score) || 0;
       
-      // Track effort per day to find the hardest day for the kitchen
       const day = meal.serve_date.split('T')[0];
       if (!dailyEffortTracker[day]) dailyEffortTracker[day] = 0;
       dailyEffortTracker[day] += Number(meal.effort_score) || 0;
     });
 
-    // Find the day with the maximum kitchen effort
     let maxEffort = 0;
     let hardestDay = "N/A";
     Object.entries(dailyEffortTracker).forEach(([day, effort]) => {
         if (effort > maxEffort) {
             maxEffort = effort;
-            // Convert the date back into a readable Day name (e.g., "Monday")
             hardestDay = new Date(day).toLocaleDateString('en-US', { weekday: 'long' });
         }
     });
@@ -2718,7 +2413,6 @@ const MenuTab = () =>{
     };
   }, [weeklyMenu, weekDays]);
 
-  // ✨ UPGRADED: Advanced Filter & Sort Logic
   const filteredCatalog = useMemo(() => {
     let result = catalog.filter(dish => 
       dish.dish_name.toLowerCase().includes(catalogSearch.toLowerCase())
@@ -2730,9 +2424,9 @@ const MenuTab = () =>{
 
     result.sort((a, b) => {
       if (catalogSort === 'name') return a.dish_name.localeCompare(b.dish_name);
-      if (catalogSort === 'cost') return b.cost - a.cost; // Highest cost first
-      if (catalogSort === 'effort') return b.effort_score - a.effort_score; // Highest effort first
-      if (catalogSort === 'popularity') return (b.popularity_score || 0) - (a.popularity_score || 0); // Highest popularity first
+      if (catalogSort === 'cost') return b.cost - a.cost; 
+      if (catalogSort === 'effort') return b.effort_score - a.effort_score; 
+      if (catalogSort === 'popularity') return (b.popularity_score || 0) - (a.popularity_score || 0); 
       return 0;
     });
 
@@ -2746,7 +2440,6 @@ const MenuTab = () =>{
         {/* HEADER */}
         <div className="p-6 border-b flex justify-between items-center bg-gray-800 text-white">
           
-          {/* ✨ NEW: Title + Week Navigation Controls */}
           <div className="flex items-center gap-4">
             <h2 className="text-2xl font-bold hidden md:block">Weekly Menu Planner</h2>
             
@@ -2771,7 +2464,6 @@ const MenuTab = () =>{
             </button>
           </div>
           <div className="flex items-center gap-3">
-            {/* ✨ NEW: Upload CSV Schedule Button */}
             <div className="flex items-center gap-1.5 ml-2">
               <button 
                 onClick={() => setShowUploadGuide(true)}
@@ -2795,7 +2487,6 @@ const MenuTab = () =>{
               </div>
             </div>
 
-            {/* THE AI BUTTON */}
             <button 
               onClick={() => setShowAIModal(true)}
               className="bg-gradient-to-r from-indigo-500 via-purple-500 to-fuchsia-500 text-white px-4 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:shadow-lg hover:scale-105 transition-all active:scale-95 border border-purple-400/50 text-sm"
@@ -2816,19 +2507,16 @@ const MenuTab = () =>{
               <tr className="bg-gray-100 text-gray-700 uppercase text-sm">
                 <th className="p-4 border-b w-1/4">Day / Date</th>
                 
-                {/* Dynamically Map the Meal Headers to include times */}
                 {['Breakfast', 'Lunch', 'Dinner'].map((meal) => (
                   <th key={meal} className="p-4 border-b w-1/4 group relative">
                     <div className="flex items-center justify-between">
                       <div>
                         <span className="block text-base font-bold">{meal}</span>
-                        {/* Use the new formatter here! */}
                         <span className="text-xs text-gray-500 font-normal lowercase tracking-wide">
                           {format12Hour(mealTimings[meal].start)} - {format12Hour(mealTimings[meal].end)}
                         </span>
                       </div>
                       
-                      {/* Make the button actually open the modal */}
                       <button 
                         className="opacity-0 group-hover:opacity-100 transition-opacity text-blue-500 text-xs hover:underline bg-blue-50 px-2 py-1 rounded"
                         onClick={() => setTimeEditModal({ meal: meal, start: mealTimings[meal].start, end: mealTimings[meal].end })}
@@ -2848,10 +2536,8 @@ const MenuTab = () =>{
                 return (
                   <tr 
                     key={day.dateString} 
-                    // Dynamic Tailwind: Blue tint and thick border if it's today!
                     className={`transition-colors ${isToday ? "bg-blue-50 border-l-4 border-blue-500 shadow-sm" : "hover:bg-gray-50 border-b"}`}
                   >
-                    {/* Column 1: Date */}
                     <td className="p-4 border-r">
                       <div className={`font-bold text-lg ${isToday ? "text-blue-700" : "text-gray-800"}`}>
                         {day.dayName} {isToday && <span className="text-sm font-normal bg-blue-200 text-blue-800 px-2 py-0.5 rounded ml-2">Today</span>}
@@ -2859,7 +2545,6 @@ const MenuTab = () =>{
                       <div className="text-sm text-gray-500">{day.dateString}</div>
                     </td>
 
-                    {/* Columns 2, 3, 4: Meals */}
                     {['Breakfast', 'Lunch', 'Dinner'].map((meal) => {
                      const assignedDishes = getDishesForSlot(day.dateString, meal);
                       
@@ -2867,7 +2552,6 @@ const MenuTab = () =>{
                         <td key={meal} className="p-4 border-r align-top">
                           <div className="flex flex-col gap-2 h-full">
                             
-                            {/* Render EVERY dish assigned to this slot */}
                             {assignedDishes.map((dish) => (
                               <div key={dish.schedule_id} className={`p-2 rounded border text-sm relative group pr-6 ${
                                    dish.diet_type === 'Veg' ? 'bg-green-100 text-green-700' : 
@@ -2879,16 +2563,6 @@ const MenuTab = () =>{
                                 
                                 <div className="flex items-center gap-2 mt-1">
                                   <span className="text-xs opacity-75">{dish.diet_type}</span>
-                                  {/* THE DYNAMIC STATUS BADGE */}
-                                  <span className={`text-[10px] px-1.5 py-0.5 rounded uppercase tracking-wider font-bold ${
-                                    dish.is_new_recipe_badge ? 'bg-fuchsia-100 text-fuchsia-700 border border-fuchsia-200' :
-                                    dish.status === 'AI Draft' ? 'bg-purple-100 text-purple-700 border border-purple-200' :
-                                    dish.status === 'Draft' ? 'bg-orange-100 text-orange-700 border border-orange-200' : 
-                                    dish.status === 'Approved' ? 'bg-blue-100 text-blue-700' : 
-                                    'bg-yellow-200 text-yellow-800'
-                                  }`}>
-                                    {dish.is_new_recipe_badge ? '✨ NEW RECIPE' : dish.status === 'AI Draft' ? '🤖 AI Draft' : dish.status}
-                                  {/* THE DYNAMIC STATUS BADGE */}
                                   <span className={`text-[10px] px-1.5 py-0.5 rounded uppercase tracking-wider font-bold ${
                                     dish.is_new_recipe_badge ? 'bg-fuchsia-100 text-fuchsia-700 border border-fuchsia-200' :
                                     dish.status === 'AI Draft' ? 'bg-purple-100 text-purple-700 border border-purple-200' :
@@ -2900,7 +2574,6 @@ const MenuTab = () =>{
                                   </span>
                                 </div>
                                 
-                                {/* The Delete Button */}
                                 <button 
                                   onClick={() => handleRemoveDish(dish.schedule_id, dish.dish_name)}
                                   className="absolute top-1 right-1 w-5 h-5 flex items-center justify-center rounded-full bg-red-100 text-red-600 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500 hover:text-white"
@@ -2911,7 +2584,6 @@ const MenuTab = () =>{
                               </div>
                             ))}
 
-                            {/* ✨ UPGRADED: Hide the button if they hit the limit of 2 items */}
                             {assignedDishes.length < 2 && (
                               <button 
                                 onClick={() => setAssignModalData({ dateString: day.dateString, mealType: meal })}
@@ -2932,14 +2604,68 @@ const MenuTab = () =>{
             </tbody>
           </table>
         </div>
-        {/* ========================================= */}
+
+        {/* --- WEEKLY OPERATIONS SUMMARY --- */}
+        <div className="mt-8 bg-white p-6 rounded-2xl border border-gray-200 shadow-sm flex flex-col md:flex-row items-center justify-between gap-6 animate-fade-in">
+          
+          <div>
+            <h3 className="font-bold text-gray-800 text-lg">Weekly Operations Brief</h3>
+            <p className="text-xs text-gray-500 mt-1">Estimated metrics per student for the selected week.</p>
+          </div>
+
+          <div className="flex flex-wrap gap-4">
+            <div className="bg-green-50 px-4 py-3 rounded-xl border border-green-100 flex items-center gap-4 min-w-[160px]">
+               <div className="bg-green-200 text-green-700 p-2 rounded-lg font-black text-xl">₹</div>
+               <div>
+                 <p className="text-[10px] uppercase font-bold text-green-600 tracking-wider">Total Cost</p>
+                 <p className="font-black text-green-900 text-lg">₹{weeklyMetrics.totalCost}</p>
+               </div>
+            </div>
+            
+            <div className="bg-blue-50 px-4 py-3 rounded-xl border border-blue-100 flex items-center gap-3 flex-1 min-w-[140px]">
+               <div className="bg-blue-200 text-blue-700 p-2 rounded-lg font-black text-lg">⚖</div>
+               <div>
+                 <p className="text-[10px] uppercase font-bold text-blue-600 tracking-wider">Avg Cost/Meal</p>
+                 <p className="font-black text-blue-900 text-lg">₹{weeklyMetrics.avgCost}</p>
+               </div>
+            </div>
+
+            <div className="bg-orange-50 px-4 py-3 rounded-xl border border-orange-100 flex items-center gap-4 min-w-[160px]">
+               <div className="bg-orange-200 text-orange-700 p-2 rounded-lg font-black text-xl">♨</div>
+               <div>
+                 <p className="text-[10px] uppercase font-bold text-orange-600 tracking-wider">Avg Labor Effort</p>
+                 <p className="font-black text-orange-900 text-lg">{weeklyMetrics.avgEffort} / 10</p>
+               </div>
+            </div>
+
+            <div className="bg-red-50 px-4 py-3 rounded-xl border border-red-100 flex items-center gap-4 min-w-[160px]">
+               <div className="bg-red-200 text-red-700 p-2 rounded-lg font-black text-xl">⚠</div>
+               <div>
+                 <p className="text-[10px] uppercase font-bold text-red-600 tracking-wider">Hardest Shift</p>
+                 <p className="font-black text-red-900 text-lg">{weeklyMetrics.highestEffortDay}</p>
+               </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="p-4 border-t bg-gray-50 flex justify-between items-center">
+            <p className="text-sm text-gray-500">
+              Click approve to publish this week's menu to the Student App.
+            </p>
+            <button 
+              onClick={handleApproveWeek}
+              className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded shadow transition flex items-center gap-2"
+            >
+              ✓ Approve Week's Menu
+            </button>
+        </div>
+      </div>
+
       {/* MODAL 1: ADD TO CATALOG                   */}
-      {/* ========================================= */}
       {ShowCatalogModal && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl flex flex-col max-h-[85vh] overflow-hidden animate-slide-up">
             
-            {/* Modal Header */}
             <div className="p-5 border-b bg-gray-50 flex justify-between items-center">
               <div>
                 <h2 className="font-bold text-xl text-gray-800">Manage Menu Catalog</h2>
@@ -2952,14 +2678,12 @@ const MenuTab = () =>{
             
             <div className="flex-1 overflow-y-auto p-6 bg-gray-50 space-y-8">
               
-              {/* SECTION 1: ADD NEW DISH FORM */}
               <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
                 <h3 className="font-bold text-gray-700 mb-4 text-sm uppercase tracking-wider flex items-center gap-2">
                   <span className="bg-blue-100 text-blue-600 p-1 rounded">+</span> Add New Combo
                 </h3>
                 <form onSubmit={handleAddDish} className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
                   
-                  {/* Row 1: Dish Name (Takes up 2 columns) & Diet Type (Takes 1) */}
                   <div className="md:col-span-2">
                     <label className="block text-xs font-bold text-gray-500 mb-1">Combo Name</label>
                     <input 
@@ -2984,7 +2708,6 @@ const MenuTab = () =>{
                     </select>
                   </div>
 
-                  {/* Row 2: Base Cost, Effort Score, and Submit Button */}
                   <div>
                     <label className="block text-xs font-bold text-gray-500 mb-1">Base Cost (₹)</label>
                     <input 
@@ -3014,7 +2737,6 @@ const MenuTab = () =>{
                   </div>
                   
                 </form>
-                {/* ✨ NEW: Catalog CSV Upload Section with Guide Button */}
                 <div className="flex items-center gap-2 mt-4 pt-4 border-t border-gray-100">
                   <button 
                     type="button"
@@ -3039,9 +2761,7 @@ const MenuTab = () =>{
                 </div>
               </div>
 
-              {/* SECTION 2: ADVANCED CATALOG CONTROL */}
               <div>   
-                {/* 🎛️ The Advanced Toolbar */}
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-4 gap-4 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
                   
                   <div className="flex flex-col gap-3 w-full md:w-auto">
@@ -3050,7 +2770,6 @@ const MenuTab = () =>{
                     </h3>
                     
                     <div className="flex flex-wrap items-center gap-2">
-                      {/* Search */}
                       <div className="relative w-full sm:w-48">
                         <Search size={14} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
                         <input 
@@ -3062,7 +2781,6 @@ const MenuTab = () =>{
                         />
                       </div>
 
-                      {/* Diet Filter */}
                       <select 
                         value={catalogDietFilter}
                         onChange={(e) => setCatalogDietFilter(e.target.value)}
@@ -3074,7 +2792,6 @@ const MenuTab = () =>{
                         <option value="Common">Common</option>
                       </select>
 
-                      {/* Sort Dropdown */}
                       <select 
                         value={catalogSort}
                         onChange={(e) => setCatalogSort(e.target.value)}
@@ -3088,7 +2805,6 @@ const MenuTab = () =>{
                     </div>
                   </div>
 
-                  {/* Bulk Delete Button */}
                   {filteredCatalog.length > 0 && (
                     <button 
                       onClick={handleBulkDeleteCatalog}
@@ -3099,7 +2815,6 @@ const MenuTab = () =>{
                   )}
                 </div>
 
-                {/* 📋 The Dish Grid */}
                 {filteredCatalog.length === 0 ? (
                   <div className="text-center text-gray-500 py-12 bg-white rounded-xl border border-gray-200 border-dashed">
                     <Filter size={32} className="mx-auto mb-2 text-gray-300" />
@@ -3109,10 +2824,8 @@ const MenuTab = () =>{
                 ) : (
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 max-h-[50vh] overflow-y-auto pr-2 custom-scrollbar">
                     {filteredCatalog.map(dish => (
-                      // ✨ Check if this specific dish is in "Edit Mode"
                       editingDishId === dish.id ? (
                         
-                        // 🛠️ THE EDIT MODE CARD
                         <form key={`edit-${dish.id}`} onSubmit={executeUpdateDish} className="bg-blue-50/50 p-4 rounded-xl border-2 border-blue-400 shadow-sm transition-all flex flex-col justify-between">
                           <div className="space-y-3 mb-3">
                             <div>
@@ -3171,7 +2884,6 @@ const MenuTab = () =>{
 
                       ) : (
 
-                        // 👁️ THE VIEW MODE CARD (Original)
                         <div key={dish.id} className="bg-white p-4 rounded-xl border border-gray-200 hover:border-blue-300 hover:shadow-md transition group flex flex-col justify-between">
                           
                           <div className="flex justify-between items-start mb-3">
@@ -3187,7 +2899,6 @@ const MenuTab = () =>{
                                   {dish.diet_type}
                                 </span>
                                 
-                                {/* ✨ NEW: The "Active on Menu" Tag */}
                                 {dish.served_meals && (
                                   <span 
                                     className="inline-flex items-center gap-1 bg-purple-50 text-purple-700 border border-purple-200 text-[10px] uppercase font-bold px-2 py-0.5 rounded cursor-help"
@@ -3199,7 +2910,6 @@ const MenuTab = () =>{
                               </div>
                             </div>
                             
-                            {/* ✨ NEW: Action Button Group (Edit + Delete) */}
                             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity shrink-0">
                               <button 
                                 onClick={() => handleEditClick(dish)}
@@ -3243,35 +2953,30 @@ const MenuTab = () =>{
         </div>
       )}
 
-      {/* ========================================= */}
       {/* MODAL 2: THE AI MENU GENERATOR MODAL     */}
-      {/* ========================================= */}
       {showAIModal && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden animate-slide-up border border-purple-100">
             
-            {/* AI Header */}
             <div className="bg-gradient-to-r from-indigo-900 to-purple-900 p-6 text-white text-center relative overflow-hidden">
               <div className="absolute top-0 left-0 w-full h-full opacity-20 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-white via-transparent to-transparent"></div>
               <BrainCircuit size={48} className="mx-auto mb-3 text-purple-200" />
               <h2 className="text-2xl font-black tracking-tight">AI Menu Architect</h2>
-
               <p className="text-purple-200 text-sm mt-1 font-medium">Generate a data-driven weekly schedule.</p>
             </div>
 
             <div className="p-6 space-y-6 bg-gray-50">
               
-              {/* Instructions */}
               <div className="bg-purple-50 border border-purple-100 p-4 rounded-xl text-sm text-purple-800 leading-relaxed">
                 The AI will analyze your <strong>Menu Catalog</strong> (costs, effort scores) and historical <strong>Student Reviews</strong> to build the optimal 7-day schedule.
               </div>
               <button 
-                    onClick={() => setShowAIGuide(!showAIGuide)}
-                    className={`flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-md transition-colors ${showAIGuide ? 'bg-purple-100 text-purple-700' : 'text-gray-500 hover:bg-gray-100'}`}
-                  >
-                    <Info size={14} /> {showAIGuide ? 'Hide Guide' : 'How does the AI work?'}
+                onClick={() => setShowAIGuide(!showAIGuide)}
+                className={`flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-md transition-colors ${showAIGuide ? 'bg-purple-100 text-purple-700' : 'text-gray-500 hover:bg-gray-100'}`}
+              >
+                <Info size={14} /> {showAIGuide ? 'Hide Guide' : 'How does the AI work?'}
               </button>
-              {/* ✨ READABLE & COMPACT AI GUIDE */}
+              
               {showAIGuide && (
                   <div className="mb-4 bg-purple-50/50 border border-purple-100 p-4 rounded-xl animate-slide-down">
                     <div className="flex items-center gap-2 mb-3">
@@ -3308,7 +3013,7 @@ const MenuTab = () =>{
                     </div>
                   </div>
               )}
-              {/* Custom Prompt / Focus */}
+              
               <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">
                   Any specific instructions for the AI? (Optional)
@@ -3321,22 +3026,14 @@ const MenuTab = () =>{
                 ></textarea>
               </div>
 
-              {/* Action Buttons */}
               <div className="flex gap-3 pt-2">
                 <button 
                   onClick={() => {
                     if (abortControllerRef.current) {
-                      abortControllerRef.current.abort(); // 🛑 Kill the network request!
+                      abortControllerRef.current.abort(); 
                     }
-                    setShowAIModal(false); // Hide the UI
-                    setAiLoading(false);   // Reset the loading spinner
-                  }}
-                  onClick={() => {
-                    if (abortControllerRef.current) {
-                      abortControllerRef.current.abort(); // 🛑 Kill the network request!
-                    }
-                    setShowAIModal(false); // Hide the UI
-                    setAiLoading(false);   // Reset the loading spinner
+                    setShowAIModal(false); 
+                    setAiLoading(false);   
                   }}
                   className="flex-1 bg-white border-2 border-gray-200 text-gray-600 font-bold py-3 rounded-xl hover:bg-gray-50 transition"
                 >
@@ -3360,9 +3057,7 @@ const MenuTab = () =>{
         </div>
       )}
 
-      {/* ========================================= */}
       {/* MODAL 3: ASSIGN DISH TO MENU SCHEDULE     */}
-      {/* ========================================= */}
       {assignModalData && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden">
@@ -3394,9 +3089,8 @@ const MenuTab = () =>{
           </div>
         </div>
       )}
-      {/* ========================================= */}
+
       {/* MODAL 4: EDIT MEAL TIMINGS                */}
-      {/* ========================================= */}
       {timeEditModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden">
@@ -3437,116 +3131,7 @@ const MenuTab = () =>{
         </div>
       )}
 
-      {/* --- WEEKLY OPERATIONS SUMMARY --- */}
-      <div className="mt-8 bg-white p-6 rounded-2xl border border-gray-200 shadow-sm flex flex-col md:flex-row items-center justify-between gap-6 animate-fade-in">
-        
-        <div>
-          <h3 className="font-bold text-gray-800 text-lg">Weekly Operations Brief</h3>
-          <p className="text-xs text-gray-500 mt-1">Estimated metrics per student for the selected week.</p>
-        </div>
-
-        <div className="flex flex-wrap gap-4">
-          {/* Budget Metric */}
-          <div className="bg-green-50 px-4 py-3 rounded-xl border border-green-100 flex items-center gap-4 min-w-[160px]">
-             <div className="bg-green-200 text-green-700 p-2 rounded-lg font-black text-xl">₹</div>
-             <div>
-               <p className="text-[10px] uppercase font-bold text-green-600 tracking-wider">Total Cost</p>
-               <p className="font-black text-green-900 text-lg">₹{weeklyMetrics.totalCost}</p>
-             </div>
-          </div>
-          
-          {/* Avg. Budget Metric */}
-          <div className="bg-blue-50 px-4 py-3 rounded-xl border border-blue-100 flex items-center gap-3 flex-1 min-w-[140px]">
-             <div className="bg-blue-200 text-blue-700 p-2 rounded-lg font-black text-lg">⚖</div>
-             <div>
-               <p className="text-[10px] uppercase font-bold text-blue-600 tracking-wider">Avg Cost/Meal</p>
-               <p className="font-black text-blue-900 text-lg">₹{weeklyMetrics.avgCost}</p>
-             </div>
-          </div>
-
-          {/* Effort Metric */}
-          <div className="bg-orange-50 px-4 py-3 rounded-xl border border-orange-100 flex items-center gap-4 min-w-[160px]">
-             <div className="bg-orange-200 text-orange-700 p-2 rounded-lg font-black text-xl">♨</div>
-             <div>
-               <p className="text-[10px] uppercase font-bold text-orange-600 tracking-wider">Avg Labor Effort</p>
-               <p className="font-black text-orange-900 text-lg">{weeklyMetrics.avgEffort} / 10</p>
-             </div>
-          </div>
-
-          {/* Warning Metric */}
-          <div className="bg-red-50 px-4 py-3 rounded-xl border border-red-100 flex items-center gap-4 min-w-[160px]">
-             <div className="bg-red-200 text-red-700 p-2 rounded-lg font-black text-xl">⚠</div>
-             <div>
-               <p className="text-[10px] uppercase font-bold text-red-600 tracking-wider">Hardest Shift</p>
-               <p className="font-black text-red-900 text-lg">{weeklyMetrics.highestEffortDay}</p>
-             </div>
-          </div>
-        </div>
-        
-      </div>
-
-
-      {/* --- WEEKLY OPERATIONS SUMMARY --- */}
-      <div className="mt-8 bg-white p-6 rounded-2xl border border-gray-200 shadow-sm flex flex-col md:flex-row items-center justify-between gap-6 animate-fade-in">
-        
-        <div>
-          <h3 className="font-bold text-gray-800 text-lg">Weekly Operations Brief</h3>
-          <p className="text-xs text-gray-500 mt-1">Estimated metrics per student for the selected week.</p>
-        </div>
-
-        <div className="flex flex-wrap gap-4">
-          {/* Budget Metric */}
-          <div className="bg-green-50 px-4 py-3 rounded-xl border border-green-100 flex items-center gap-4 min-w-[160px]">
-             <div className="bg-green-200 text-green-700 p-2 rounded-lg font-black text-xl">₹</div>
-             <div>
-               <p className="text-[10px] uppercase font-bold text-green-600 tracking-wider">Total Cost</p>
-               <p className="font-black text-green-900 text-lg">₹{weeklyMetrics.totalCost}</p>
-             </div>
-          </div>
-          
-          {/* Avg. Budget Metric */}
-          <div className="bg-blue-50 px-4 py-3 rounded-xl border border-blue-100 flex items-center gap-3 flex-1 min-w-[140px]">
-             <div className="bg-blue-200 text-blue-700 p-2 rounded-lg font-black text-lg">⚖</div>
-             <div>
-               <p className="text-[10px] uppercase font-bold text-blue-600 tracking-wider">Avg Cost/Meal</p>
-               <p className="font-black text-blue-900 text-lg">₹{weeklyMetrics.avgCost}</p>
-             </div>
-          </div>
-
-          {/* Effort Metric */}
-          <div className="bg-orange-50 px-4 py-3 rounded-xl border border-orange-100 flex items-center gap-4 min-w-[160px]">
-             <div className="bg-orange-200 text-orange-700 p-2 rounded-lg font-black text-xl">♨</div>
-             <div>
-               <p className="text-[10px] uppercase font-bold text-orange-600 tracking-wider">Avg Labor Effort</p>
-               <p className="font-black text-orange-900 text-lg">{weeklyMetrics.avgEffort} / 10</p>
-             </div>
-          </div>
-
-          {/* Warning Metric */}
-          <div className="bg-red-50 px-4 py-3 rounded-xl border border-red-100 flex items-center gap-4 min-w-[160px]">
-             <div className="bg-red-200 text-red-700 p-2 rounded-lg font-black text-xl">⚠</div>
-             <div>
-               <p className="text-[10px] uppercase font-bold text-red-600 tracking-wider">Hardest Shift</p>
-               <p className="font-black text-red-900 text-lg">{weeklyMetrics.highestEffortDay}</p>
-             </div>
-          </div>
-        </div>
-        
-      </div>
-
-      <div className="p-4 border-t bg-gray-50 flex justify-between items-center">
-          <p className="text-sm text-gray-500">
-            Click approve to publish this week's menu to the Student App.
-          </p>
-          <button 
-            onClick={handleApproveWeek}
-            className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded shadow transition flex items-center gap-2"
-          >
-            ✓ Approve Week's Menu
-          </button>
-        </div>
-      </div>
-      {/* ✨ NEW: CSV UPLOAD GUIDE MODAL */}
+      {/* CSV UPLOAD GUIDE MODAL */}
       {showUploadGuide && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fade-in">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden">
@@ -3612,7 +3197,8 @@ const MenuTab = () =>{
           </div>
         </div>
       )}
-      {/* ✨ NEW: CATALOG CSV UPLOAD GUIDE MODAL */}
+
+      {/* CATALOG CSV UPLOAD GUIDE MODAL */}
       {showCatalogUploadGuide && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden animate-slide-up">
@@ -4078,7 +3664,6 @@ function WardenDashboard() {
     { id: 'home', label: 'Home', icon: <Home size={20} /> },
     { id: 'mess', label: 'Mess Reviews', icon: <ClipboardList size={20} /> },
     { id: 'menu', label: 'Menu Management', icon: <Utensils size={20} /> },
-    { id: 'overnight', label: 'Overnight Logs', icon: <Moon size={20} /> },
     { id: 'overnight', label: 'Overnight Logs', icon: <Moon size={20} /> },
     { id: 'grievances', label: 'Grievances', icon: <AlertCircle size={20} /> },
     { id: 'students', label: 'Student Management', icon: <Users size={20} /> },

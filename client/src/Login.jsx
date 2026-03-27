@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
-const API_BASE = 'http://10.0.9.78:3001/api'; 
+const API_BASE = 'http://192.168.1.11:3001/api'; 
 
 function Login({ setUser }) {
   const [uid, setuid] = useState('');

@@ -4,7 +4,7 @@ import { Html5QrcodeScanner } from 'html5-qrcode';
 import { DoorOpen, MapPin, AlertCircle, LogOut, ScanLine } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-const API_BASE = 'http://10.0.9.78:3001/api'; 
+const API_BASE = 'http://192.168.1.11:3001/api'; 
 
 function GatePass() {
   const storedUser = JSON.parse(localStorage.getItem('user'));

@@ -3,11 +3,10 @@ import axios from 'axios';
 import { Star, Utensils, Send, CheckCircle, Sunrise, Sun, Moon, Clock, Leaf, Drumstick, AlertCircle, Map, Lock } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-const API_BASE = 'http://10.0.9.78:3001/api';
+const API_BASE = 'http://192.168.1.11:3001/api';
 
 const MessReview = () => {
   const user = JSON.parse(localStorage.getItem('user'));
-  const uid = user ? user.uid : 'Unknown';
   const uid = user ? user.uid : 'Unknown';
   const [loading, setLoading] = useState(false);
   const [hostelStatus, setHostelStatus] = useState('in'); 
@@ -20,7 +19,6 @@ const MessReview = () => {
   const [todayMenu, setTodayMenu] = useState([]);
   const [rating, setRating] = useState(0);
   const [hoveredStar, setHoveredStar] = useState(0);
-  
   
   const [dishIssues, setDishIssues] = useState({}); 
   const [comment, setComment] = useState('');
@@ -37,7 +35,7 @@ const MessReview = () => {
   const [newCustomTag, setNewCustomTag] = useState('');
 
   const handleAddNewTag = (e) => {
-    e.preventDefault(); // Prevent page reload if they hit Enter
+    e.preventDefault(); 
     const tag = newCustomTag.trim();
     if (!tag) return;
     
@@ -126,7 +124,6 @@ const MessReview = () => {
   const handleOpenReview = (mealName) => {
     const menuForMeal = dayMenu[mealName];
     
-    
     if (!menuForMeal || menuForMeal.length === 0) {
       toast.error(`The Warden hasn't published the ${dietType} menu for ${mealName} yet!`);
       return; 
@@ -154,6 +151,7 @@ const MessReview = () => {
         cleanIssues[itemName] = tags;
       }
     });
+
     const payload = {
       uid: uid,
       meal_type: activeMeal,
@@ -193,11 +191,6 @@ const MessReview = () => {
       } else {
         newState[dishId] = []; 
       }
-      if (newState[dishId]) {
-        delete newState[dishId]; 
-      } else {
-        newState[dishId] = []; 
-      }
       return newState;
     });
   };
@@ -208,14 +201,10 @@ const MessReview = () => {
       const updatedTags = currentTags.includes(tag) 
         ? currentTags.filter(t => t !== tag) 
         : [...currentTags, tag];
-      const updatedTags = currentTags.includes(tag) 
-        ? currentTags.filter(t => t !== tag) 
-        : [...currentTags, tag];
       return { ...prev, [dishId]: updatedTags };
     });
   };
 
-  // Splits "Idli & Sambar" into ["Idli", "Sambar"]
   const splitDishName = (name) => {
     if (!name) return [];
     return name.split(/ \+ | & | and |, /i).map(s => s.trim()).filter(Boolean);
@@ -228,35 +217,8 @@ const MessReview = () => {
   ];
 
   if (loading) {
-      return <div className="flex justify-center items-center h-64 text-gray-500 font-medium animate-pulse">Checking campus status...</div>;
-    }
-
-  // --- THE LOCK SCREEN ---
-  if (hostelStatus === 'out') {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] text-center animate-fade-in px-4">
-        <div className="bg-orange-50 text-orange-500 p-6 rounded-full mb-6 relative">
-          <Map size={48} />
-          <div className="absolute -bottom-2 -right-2 bg-white rounded-full p-1.5 shadow-sm border border-gray-100">
-            <Lock size={20} className="text-gray-700" />
-          </div>
-        </div>
-        <h2 className="text-3xl font-bold text-gray-800 mb-3">You are currently away!</h2>
-        <p className="text-gray-500 max-w-md mx-auto leading-relaxed mb-8">
-          Mess reviews and complaints are paused while you are checked out of the hostel. Enjoy your time away, and we'll see you when you get back!
-        </p>
-        <div className="bg-white border border-gray-200 px-6 py-3 rounded-xl shadow-sm text-sm font-bold text-gray-600 flex items-center gap-2">
-          <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse"></span>
-          Status: Checked Out
-        </div>
-      </div>
-    );
+    return <div className="flex justify-center items-center h-64 text-gray-500 font-medium animate-pulse">Checking campus status...</div>;
   }
-  
-
-  if (loading) {
-      return <div className="flex justify-center items-center h-64 text-gray-500 font-medium animate-pulse">Checking campus status...</div>;
-    }
 
   // --- THE LOCK SCREEN ---
   if (hostelStatus === 'out') {
@@ -285,11 +247,7 @@ const MessReview = () => {
       
       {/* DIET TOGGLE HEADER */}
       <div className="flex flex-col md:flex-row justify-between items-center bg-white p-6 rounded-2xl shadow-sm border border-gray-100 gap-6">
-      {/* DIET TOGGLE HEADER */}
-      <div className="flex flex-col md:flex-row justify-between items-center bg-white p-6 rounded-2xl shadow-sm border border-gray-100 gap-6">
         <div>
-          <h2 className="text-2xl font-bold text-gray-800">Mess Feedback</h2>
-          <p className="text-gray-500 text-sm">Select your diet type to view today's menu</p>
           <h2 className="text-2xl font-bold text-gray-800">Mess Feedback</h2>
           <p className="text-gray-500 text-sm">Select your diet type to view today's menu</p>
         </div>
@@ -305,37 +263,24 @@ const MessReview = () => {
       </div>
 
       {/* MEAL CARDS GRID */}
-      {/* MEAL CARDS GRID */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {mealCards.map((meal) => {
-          const isReviewed = reviewedMeals.includes(meal.name);
-          const isTimeLocked = currentHour < mealSchedule[meal.name].startHour;
           const isReviewed = reviewedMeals.includes(meal.name);
           const isTimeLocked = currentHour < mealSchedule[meal.name].startHour;
           const isActive = activeMeal === meal.name;
           const isPending = !dayMenu[meal.name] || dayMenu[meal.name].length === 0;
           const theme = dietType === 'Veg' ? {
-                  activeBorder: 'border-green-400',
-                  hoverBorder: 'hover:border-green-200',
-                  iconColors: 'bg-green-50 text-green-600',
-                  actionText: 'text-green-600'
-                } : {
-                  activeBorder: 'border-red-400',
-                  hoverBorder: 'hover:border-red-200',
-                  iconColors: 'bg-red-50 text-red-600',
-                  actionText: 'text-red-600'
-                };
-          const theme = dietType === 'Veg' ? {
-                  activeBorder: 'border-green-400',
-                  hoverBorder: 'hover:border-green-200',
-                  iconColors: 'bg-green-50 text-green-600',
-                  actionText: 'text-green-600'
-                } : {
-                  activeBorder: 'border-red-400',
-                  hoverBorder: 'hover:border-red-200',
-                  iconColors: 'bg-red-50 text-red-600',
-                  actionText: 'text-red-600'
-                };
+            activeBorder: 'border-green-400',
+            hoverBorder: 'hover:border-green-200',
+            iconColors: 'bg-green-50 text-green-600',
+            actionText: 'text-green-600'
+          } : {
+            activeBorder: 'border-red-400',
+            hoverBorder: 'hover:border-red-200',
+            iconColors: 'bg-red-50 text-red-600',
+            actionText: 'text-red-600'
+          };
+          
           return (
             <div 
               key={meal.name}
@@ -361,16 +306,10 @@ const MessReview = () => {
                   </p>
                 ) : (
                   <p className="italic text-gray-400 text-xs">Menu pending approval</p>
-                  <p className="italic text-gray-400 text-xs">Menu pending approval</p>
                 )}
               </div>
+              
               <div className="mt-4 w-full h-16 flex items-center justify-center">
-                {isReviewed ? (
-                  <span className="text-green-600 font-bold flex items-center gap-1"><CheckCircle size={18} /> Done</span>
-                ) : isTimeLocked ? (
-                  <span className="text-gray-400 text-sm font-medium flex items-center gap-1"><Clock size={16} /> Opens at {mealSchedule[meal.name].label}</span>
-                ) : !isActive ? (
-                  <span className={`${theme.actionText} text-sm font-bold`}>Tap to Rate &rarr;</span>
                 {isReviewed ? (
                   <span className="text-green-600 font-bold flex items-center gap-1"><CheckCircle size={18} /> Done</span>
                 ) : isTimeLocked ? (
@@ -382,9 +321,9 @@ const MessReview = () => {
                     <div className="flex gap-1 mb-3">
                       {[1, 2, 3, 4, 5].map((star) => {
                         const activeValue = hoveredStar || rating;
-                        const isActive = activeValue >= star;
+                        const isActiveStar = activeValue >= star;
                         let starColor = 'text-gray-200'; 
-                        if (isActive) {
+                        if (isActiveStar) {
                           if (activeValue <= 2) starColor = 'text-red-500 fill-red-500';
                           else if (activeValue === 3) starColor = 'text-yellow-400 fill-yellow-400';
                           else starColor = 'text-green-500 fill-green-500';
@@ -432,7 +371,6 @@ const MessReview = () => {
       </div>
 
       {/* MODAL: ITEM-FIRST FEEDBACK FLOW */}
-      {/* MODAL: ITEM-FIRST FEEDBACK FLOW */}
       {showModal && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm p-4 pb-24">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-slide-up flex flex-col max-h-[75vh]">
@@ -441,35 +379,24 @@ const MessReview = () => {
               <div>
                 <h3 className="font-bold text-gray-800 text-lg">{activeMeal} Feedback</h3>
                 <p className="text-xs text-gray-500">{rating} Stars • {dietType} Menu</p>
-                <p className="text-xs text-gray-500">{rating} Stars • {dietType} Menu</p>
               </div>
               <button onClick={resetForm} className="text-gray-400 hover:text-red-500 transition bg-white p-2 rounded-full shadow-sm border border-gray-100 hover:border-red-100">✕</button>
             </div>
 
             <div className="p-6 overflow-y-auto space-y-6">
               
-              
               {/* STEP 1: SELECT DISHES */}
               <div>
                 <p className="font-bold text-gray-800 mb-3 text-sm">1. Which item(s) had an issue? *</p>
                 <div className="flex flex-wrap gap-2">
                   {todayMenu.map(dish => {
-                    // Split the combo name into parts
                     const subItems = splitDishName(dish.dish_name);
                     
-                    
                     return subItems.map(subItem => {
-                      // Create a unique composite key (e.g., "101::Idli")
                       const uniqueKey = `${dish.id}::${subItem}`;
                       const isSelected = dishIssues[uniqueKey] !== undefined;
                       
-                      
                       return (
-                        <button
-                          key={uniqueKey}
-                          onClick={() => toggleDish(uniqueKey)}
-                          className={`px-4 py-2 rounded-xl text-sm font-bold border transition ${isSelected ? 'bg-red-50 border-red-200 text-red-600 shadow-inner' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}
-                        >
                         <button
                           key={uniqueKey}
                           onClick={() => toggleDish(uniqueKey)}
@@ -484,11 +411,9 @@ const MessReview = () => {
               </div>
 
               {/* STEP 2: DYNAMIC TAGS PER SELECTED DISH */}
-              {/* STEP 2: DYNAMIC TAGS PER SELECTED DISH */}
               {Object.keys(dishIssues).length > 0 && (
                 <div className="space-y-4 animate-fade-in border-l-2 border-red-100 pl-4">
                   <p className="font-bold text-gray-800 text-sm flex items-center gap-2"><AlertCircle size={16} className="text-red-500"/> 2. What was wrong with them?</p>
-                  
                   
                   {Object.keys(dishIssues).map(uniqueKey => {
                     const [dishIdStr, subItemName] = uniqueKey.split('::');
@@ -514,7 +439,6 @@ const MessReview = () => {
                             <input 
                               type="text" 
                               value={newCustomTag}
-                              // custom tags to letters/spaces only!
                               onChange={(e) => setNewCustomTag(e.target.value.replace(/[^a-zA-Z\s]/g, ''))}
                               onKeyDown={(e) => { if (e.key === 'Enter') handleAddNewTag(e); }}
                               placeholder="Other issue? (e.g. Too Salty)"
@@ -527,14 +451,7 @@ const MessReview = () => {
                             >
                               + Add Tag
                             </button>
-                            <button 
-                              type="button"
-                              onClick={handleAddNewTag}
-                              className="bg-gray-800 text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-gray-900 transition active:scale-95"
-                            >
-                              + Add Tag
-                            </button>
-                          </div>
+                        </div>
                       </div>
                     );
                   })}
@@ -549,7 +466,6 @@ const MessReview = () => {
                     rows="3"
                     placeholder="Type specific complaints here...(eg 'combo was bad')"
                     value={comment}
-                    //Sanitize comments to letters/spaces only
                     onChange={(e) => setComment(e.target.value.replace(/[^a-zA-Z\s]/g, ''))}
                  ></textarea>
               </div>
